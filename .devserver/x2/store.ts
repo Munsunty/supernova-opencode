@@ -59,6 +59,20 @@ export interface InteractionStats {
     rejected: number;
 }
 
+export interface MetricEvent {
+    id: string;
+    eventType: string;
+    taskId: string | null;
+    interactionId: string | null;
+    taskType: TaskType | null;
+    status: TaskStatus | null;
+    durationMs: number | null;
+    backlog: number | null;
+    errorClass: string | null;
+    payload: string | null;
+    createdAt: number;
+}
+
 export class Store {
     private db: Database;
 
@@ -125,7 +139,31 @@ export class Store {
 	      CREATE INDEX IF NOT EXISTS idx_interactions_status ON interactions(status)
 	    `);
         this.db.exec(`
-	      CREATE INDEX IF NOT EXISTS idx_interactions_created ON interactions(created_at)
+		      CREATE INDEX IF NOT EXISTS idx_interactions_created ON interactions(created_at)
+		    `);
+        this.db.exec(`
+	      CREATE TABLE IF NOT EXISTS metrics_events (
+	        id TEXT PRIMARY KEY,
+	        event_type TEXT NOT NULL,
+	        task_id TEXT,
+	        interaction_id TEXT,
+	        task_type TEXT,
+	        status TEXT,
+	        duration_ms INTEGER,
+	        backlog INTEGER,
+	        error_class TEXT,
+	        payload TEXT,
+	        created_at INTEGER NOT NULL
+	      )
+	    `);
+        this.db.exec(`
+	      CREATE INDEX IF NOT EXISTS idx_metrics_events_created ON metrics_events(created_at)
+	    `);
+        this.db.exec(`
+	      CREATE INDEX IF NOT EXISTS idx_metrics_events_event_type ON metrics_events(event_type)
+	    `);
+        this.db.exec(`
+	      CREATE INDEX IF NOT EXISTS idx_metrics_events_task_id ON metrics_events(task_id)
 	    `);
     }
 
@@ -145,15 +183,16 @@ export class Store {
         prompt: string,
         source: string = "cli",
         type: TaskType = "omo_request",
+        sessionId?: string | null,
     ): Task {
         const now = Date.now();
         const id = randomUUIDv7();
         this.db
             .prepare(
-                `INSERT INTO tasks (id, type, prompt, status, attempts, source, created_at, updated_at)
-         VALUES (?, ?, ?, 'pending', 0, ?, ?, ?)`,
+                `INSERT INTO tasks (id, type, prompt, status, attempts, source, session_id, created_at, updated_at)
+         VALUES (?, ?, ?, 'pending', 0, ?, ?, ?, ?)`,
             )
-            .run(id, type, prompt, source, now, now);
+            .run(id, type, prompt, source, sessionId ?? null, now, now);
         return this.getTask(id)!;
     }
 
@@ -510,6 +549,93 @@ export class Store {
         return stats;
     }
 
+    appendMetricEvent(input: {
+        eventType: string;
+        taskId?: string | null;
+        interactionId?: string | null;
+        taskType?: TaskType | null;
+        status?: TaskStatus | null;
+        durationMs?: number | null;
+        backlog?: number | null;
+        errorClass?: string | null;
+        payload?: string | null;
+        createdAt?: number;
+    }): MetricEvent {
+        const id = randomUUIDv7();
+        const createdAt = input.createdAt ?? Date.now();
+        this.db
+            .prepare(
+                `INSERT INTO metrics_events (
+                   id, event_type, task_id, interaction_id, task_type, status,
+                   duration_ms, backlog, error_class, payload, created_at
+                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            )
+            .run(
+                id,
+                input.eventType,
+                input.taskId ?? null,
+                input.interactionId ?? null,
+                input.taskType ?? null,
+                input.status ?? null,
+                input.durationMs ?? null,
+                input.backlog ?? null,
+                input.errorClass ?? null,
+                input.payload ?? null,
+                createdAt,
+            );
+        return this.getMetricEvent(id)!;
+    }
+
+    getMetricEvent(id: string): MetricEvent | null {
+        const row = this.db
+            .prepare("SELECT * FROM metrics_events WHERE id = ?")
+            .get(id) as Record<string, unknown> | null;
+        return row ? this.rowToMetricEvent(row) : null;
+    }
+
+    listMetricEvents(filter?: {
+        eventType?: string;
+        taskId?: string;
+        interactionId?: string;
+        since?: number;
+        limit?: number;
+    }): MetricEvent[] {
+        let sql = "SELECT * FROM metrics_events";
+        const params: unknown[] = [];
+        const wheres: string[] = [];
+
+        if (filter?.eventType) {
+            wheres.push("event_type = ?");
+            params.push(filter.eventType);
+        }
+        if (filter?.taskId) {
+            wheres.push("task_id = ?");
+            params.push(filter.taskId);
+        }
+        if (filter?.interactionId) {
+            wheres.push("interaction_id = ?");
+            params.push(filter.interactionId);
+        }
+        if (filter?.since !== undefined) {
+            wheres.push("created_at >= ?");
+            params.push(filter.since);
+        }
+        if (wheres.length > 0) {
+            sql += ` WHERE ${wheres.join(" AND ")}`;
+        }
+        sql += " ORDER BY created_at DESC";
+        if (filter?.limit) {
+            sql += " LIMIT ?";
+            params.push(filter.limit);
+        }
+
+        const rows = this.db.prepare(sql).all(...params) as Record<
+            string,
+            unknown
+        >[];
+        return rows.map((row) => this.rowToMetricEvent(row));
+    }
+
     close() {
         this.db.close();
     }
@@ -567,6 +693,47 @@ export class Store {
             createdAt: row.created_at as number,
             answeredAt: (row.answered_at as number) ?? null,
             updatedAt: row.updated_at as number,
+        };
+    }
+
+    private rowToMetricEvent(row: Record<string, unknown>): MetricEvent {
+        const rawTaskType = (row.task_type as string | null) ?? null;
+        const taskType: TaskType | null =
+            rawTaskType === null
+                ? null
+                : rawTaskType === "omo_request" || rawTaskType === "report"
+                  ? rawTaskType
+                  : isEq1TaskType(rawTaskType)
+                    ? rawTaskType
+                    : null;
+
+        const rawStatus = (row.status as string | null) ?? null;
+        const status: TaskStatus | null =
+            rawStatus === "pending" ||
+            rawStatus === "running" ||
+            rawStatus === "completed" ||
+            rawStatus === "failed"
+                ? rawStatus
+                : null;
+
+        return {
+            id: row.id as string,
+            eventType: row.event_type as string,
+            taskId: (row.task_id as string) ?? null,
+            interactionId: (row.interaction_id as string) ?? null,
+            taskType,
+            status,
+            durationMs:
+                row.duration_ms === null || row.duration_ms === undefined
+                    ? null
+                    : Number(row.duration_ms),
+            backlog:
+                row.backlog === null || row.backlog === undefined
+                    ? null
+                    : Number(row.backlog),
+            errorClass: (row.error_class as string) ?? null,
+            payload: (row.payload as string) ?? null,
+            createdAt: row.created_at as number,
         };
     }
 }

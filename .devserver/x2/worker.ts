@@ -6,6 +6,9 @@ import { createEq1ClientFromEnv } from "../eq1/create-client";
 import { isEq1TaskType } from "../eq1/task-types";
 import { createLogger } from "../utils/logging";
 import { retryAsync } from "../utils/retry";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 interface WorkerOptions {
     enqueuePrompt: string | null;
@@ -16,11 +19,55 @@ interface WorkerOptions {
     maxRetries: number;
     retryBaseMs: number;
     retryMaxMs: number;
-    runningTimeoutMs: number;
     baseUrl: string;
 }
 
 const logger = createLogger("X2.Worker");
+
+function normalizeEnvValue(raw: string): string {
+    const trimmed = raw.trim();
+    if (
+        (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+        (trimmed.startsWith("'") && trimmed.endsWith("'"))
+    ) {
+        return trimmed.slice(1, -1);
+    }
+    return trimmed;
+}
+
+function loadDotEnvFile(envPath: string): number {
+    if (!existsSync(envPath)) return 0;
+    const text = readFileSync(envPath, "utf8");
+    let loaded = 0;
+
+    for (const rawLine of text.split("\n")) {
+        const line = rawLine.trim();
+        if (!line || line.startsWith("#")) continue;
+        const eq = line.indexOf("=");
+        if (eq <= 0) continue;
+
+        const key = line.slice(0, eq).trim();
+        if (!key || process.env[key] !== undefined) continue;
+
+        const value = normalizeEnvValue(line.slice(eq + 1));
+        process.env[key] = value;
+        loaded += 1;
+    }
+
+    return loaded;
+}
+
+function bootstrapEnv() {
+    const workerDir = dirname(fileURLToPath(import.meta.url));
+    const localEnvPath = resolve(workerDir, "..", ".env");
+    const loaded = loadDotEnvFile(localEnvPath);
+    if (loaded > 0) {
+        logger.info("dotenv_loaded", {
+            path: localEnvPath,
+            count: loaded,
+        });
+    }
+}
 
 function isTaskType(value: string): value is TaskType {
     return (
@@ -47,7 +94,6 @@ function parseArgs(argv: string[]): WorkerOptions {
         maxRetries: 1,
         retryBaseMs: 3000,
         retryMaxMs: 60000,
-        runningTimeoutMs: 120_000,
         baseUrl: process.env.OPENCODE_BASE_URL ?? "http://127.0.0.1:4996",
     };
 
@@ -96,13 +142,6 @@ function parseArgs(argv: string[]): WorkerOptions {
                 options.retryMaxMs = Number(next);
                 i++;
                 break;
-            case "--running-timeout":
-                if (!next) {
-                    throw new Error("--running-timeout requires milliseconds");
-                }
-                options.runningTimeoutMs = Number(next);
-                i++;
-                break;
             case "--base-url":
                 if (!next) throw new Error("--base-url requires a URL");
                 options.baseUrl = next;
@@ -131,12 +170,6 @@ function parseArgs(argv: string[]): WorkerOptions {
     if (options.retryMaxMs < options.retryBaseMs) {
         throw new Error("--retry-max-ms must be >= --retry-base-ms");
     }
-    if (
-        !Number.isFinite(options.runningTimeoutMs) ||
-        options.runningTimeoutMs < 1000
-    ) {
-        throw new Error("--running-timeout must be a number >= 1000");
-    }
 
     return options;
 }
@@ -154,7 +187,6 @@ Options:
   --max-retries <n>      Max retries before failed (default: 1)
   --retry-base-ms <ms>   Retry base delay (default: 3000)
   --retry-max-ms <ms>    Retry max delay cap (default: 60000)
-  --running-timeout <ms> Timeout for running task before abort/fail (default: 120000)
   --base-url <url>       OpenCode base URL (default: http://127.0.0.1:4996)
   --help                 Show this help`);
 }
@@ -165,25 +197,53 @@ function taskDurationMs(task: Task): number | null {
     return Math.max(0, task.completedAt - startedAt);
 }
 
-function logObservability(task: Task, queue: Queue) {
+function classifyError(task: Task): string | null {
+    if (task.status !== "failed" || !task.error) return null;
+    const message = task.error.toLowerCase();
+    if (message.includes("timeout")) return "timeout";
+    if (message.includes("rate limit")) return "rate_limit";
+    if (message.includes("json")) return "json_parse";
+    if (message.includes("network") || message.includes("fetch"))
+        return "network";
+    if (message.includes("session")) return "session";
+    return "unknown";
+}
+
+function logObservability(task: Task, queue: Queue, store: Store) {
     const stats = queue.getStats();
     const durationMs = taskDurationMs(task);
+    const errorClass = classifyError(task);
     logger.info("task_observability", {
         task: task.id.slice(0, 8),
+        type: task.type,
         status: task.status,
         duration_ms: durationMs === null ? "n/a" : durationMs,
         backlog: stats.pending,
+        error_class: errorClass,
+    });
+    store.appendMetricEvent({
+        eventType: "task_terminal",
+        taskId: task.id,
+        taskType: task.type,
+        status: task.status,
+        durationMs,
+        backlog: stats.pending,
+        errorClass,
     });
 }
 
-async function processUntilIdle(queue: Queue, router: Router): Promise<number> {
+async function processUntilIdle(
+    queue: Queue,
+    router: Router,
+    store: Store,
+): Promise<number> {
     let processed = 0;
 
     while (true) {
         const task = await queue.processCycle();
         if (task) {
             await router.route(task);
-            logObservability(task, queue);
+            logObservability(task, queue, store);
             processed++;
             continue;
         }
@@ -199,6 +259,7 @@ async function processUntilIdle(queue: Queue, router: Router): Promise<number> {
 }
 
 async function main() {
+    bootstrapEnv();
     const options = parseArgs(process.argv.slice(2));
     const store = new Store();
     const recovered = store.recoverRunningTasks(
@@ -223,12 +284,16 @@ async function main() {
         maxRetries: options.maxRetries,
         retryBaseDelayMs: options.retryBaseMs,
         retryMaxDelayMs: options.retryMaxMs,
-        runningTimeoutMs: options.runningTimeoutMs,
     });
     const router = new Router(new ConsoleReporter());
 
     if (recovered > 0) {
         logger.warn("stale_running_recovered", { recovered });
+        store.appendMetricEvent({
+            eventType: "stale_recovery",
+            payload: JSON.stringify({ recovered }),
+            backlog: store.getStats().pending,
+        });
     }
 
     try {
@@ -271,7 +336,7 @@ async function main() {
     }
 
     if (options.once) {
-        const processed = await processUntilIdle(queue, router);
+        const processed = await processUntilIdle(queue, router, store);
         const stats = queue.getStats();
         logger.info("once_done", {
             processed,
@@ -288,7 +353,7 @@ async function main() {
         intervalMs: options.intervalMs,
         onTaskProcessed: async (task) => {
             await router.route(task);
-            logObservability(task, queue);
+            logObservability(task, queue, store);
         },
         onError: (error) => {
             const message =
@@ -302,7 +367,6 @@ async function main() {
         max_retries: options.maxRetries,
         retry_base_ms: options.retryBaseMs,
         retry_max_ms: options.retryMaxMs,
-        running_timeout_ms: options.runningTimeoutMs,
     });
 
     const shutdown = () => {

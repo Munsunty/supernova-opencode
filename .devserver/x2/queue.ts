@@ -28,7 +28,6 @@ interface FailureOptions {
 export interface QueueOptions {
     eq1Client?: Eq1Client | null;
     maxRetries?: number;
-    runningTimeoutMs?: number;
     retryBaseDelayMs?: number;
     retryMaxDelayMs?: number;
     now?: () => number;
@@ -51,7 +50,6 @@ export class Queue {
     private loopTimer: ReturnType<typeof setInterval> | null = null;
     private processingCycle = false;
     private maxRetries: number;
-    private runningTimeoutMs: number;
     private retryBaseDelayMs: number;
     private retryMaxDelayMs: number;
     private now: () => number;
@@ -65,7 +63,6 @@ export class Queue {
         this.server = server;
         this.eq1Client = options.eq1Client ?? null;
         this.maxRetries = options.maxRetries ?? 1;
-        this.runningTimeoutMs = options.runningTimeoutMs ?? 120_000;
         this.retryBaseDelayMs = options.retryBaseDelayMs ?? 3_000;
         this.retryMaxDelayMs = options.retryMaxDelayMs ?? 60_000;
         this.now = options.now ?? (() => Date.now());
@@ -75,8 +72,9 @@ export class Queue {
         prompt: string,
         source: string = "cli",
         type: TaskType = "omo_request",
+        sessionId?: string | null,
     ): Task {
-        return this.store.createTask(prompt, source, type);
+        return this.store.createTask(prompt, source, type, sessionId);
     }
 
     async dispatchNext(): Promise<Task | null> {
@@ -188,21 +186,10 @@ export class Queue {
 
         const status = statuses[running.sessionId];
         if (status && status.type !== "idle") {
-            const startedAt = running.startedAt ?? running.createdAt;
-            const elapsed = this.now() - startedAt;
-
-            if (elapsed <= this.runningTimeoutMs) {
-                return null;
-            }
-
-            await this.server.abortSession(running.sessionId).catch(() => {});
-            return this.handleFailure(
-                running,
-                new Error(
-                    `Running timeout exceeded ${this.runningTimeoutMs}ms`,
-                ),
-                { resetSession: true },
-            );
+            // omo_request는 X_oc 코딩 에이전트 실행이므로 시간 제한을 두지 않는다.
+            // 완료 판단은 세션이 idle이 될 때까지 폴링으로 수렴한다.
+            // stale 상태 복구는 worker 재시작 시 recoverRunningTasks가 담당한다.
+            return null;
         }
 
         try {

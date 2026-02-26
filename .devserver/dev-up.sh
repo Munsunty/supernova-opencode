@@ -11,6 +11,14 @@ export XDG_CACHE_HOME="$DEVSERVER_DIR/cache"
 export OPENCODE_CONFIG="$DEVSERVER_DIR/opencode.json"
 export OPENCODE_CONFIG_DIR="$DEVSERVER_DIR"
 
+# Load local env file for worker/provider keys.
+if [ -f "$DEVSERVER_DIR/.env" ]; then
+  set -a
+  # shellcheck disable=SC1091
+  . "$DEVSERVER_DIR/.env"
+  set +a
+fi
+
 echo "=== OpenCode 격리 환경 기동 ==="
 echo "PROJECT_DIR:  $PROJECT_DIR"
 echo "DEVSERVER_DIR: $DEVSERVER_DIR"
@@ -36,8 +44,13 @@ bunx oh-my-opencode-dashboard@latest --project "$PROJECT_DIR" &
 DASHBOARD_PID=$!
 echo "Dashboard started (pid: $DASHBOARD_PID, port: 51234)"
 
-# 종료 시 Dashboard도 같이 정리
-trap "kill $DASHBOARD_PID 2>/dev/null" EXIT
+# X2 worker (백그라운드)
+bun run "$DEVSERVER_DIR/x2/worker.ts" &
+X2_WORKER_PID=$!
+echo "X2 worker started (pid: $X2_WORKER_PID)"
+
+# 종료 시 백그라운드 프로세스 정리
+trap "kill $DASHBOARD_PID $X2_WORKER_PID 2>/dev/null" EXIT
 
 # OpenCode 서버 (포그라운드)
 exec "$DEVSERVER_DIR/node_modules/.bin/opencode" serve --port 4996

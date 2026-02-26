@@ -290,13 +290,12 @@ describe("X2 Queue", () => {
         store.close();
     });
 
-    test("running timeout aborts session and marks failed when retries exhausted", async () => {
+    test("finalizeRunning waits indefinitely while session is busy (no timeout)", async () => {
         const store = createStore();
         const server = new FakeServer();
         let now = 1_000;
         const queue = new Queue(store, server as never, {
             maxRetries: 0,
-            runningTimeoutMs: 10,
             now: () => now,
         });
 
@@ -305,16 +304,19 @@ describe("X2 Queue", () => {
         const running = store.listTasks({ status: "running" })[0];
         expect(running).toBeDefined();
         expect(running?.sessionId).toBeString();
-        store.updateTask(running!.id, { startedAt: 1_000 });
 
-        now = 5_000; // timeout 초과
+        // 10분 경과해도 busy면 null 반환 (대기 계속)
+        now = 600_000;
+        const result = await queue.finalizeRunning();
+        expect(result).toBeNull();
+        expect(server.abortCalls).toBe(0);
+        expect(store.getStats().running).toBe(1);
+
+        // idle이 되면 완료 처리
+        server.markIdle(running!.sessionId!);
         const terminal = await queue.finalizeRunning();
-
         expect(terminal).toBeDefined();
-        expect(terminal?.status).toBe("failed");
-        expect(terminal?.error).toContain("timeout");
-        expect(server.abortCalls).toBe(1);
-        expect(store.getStats().failed).toBe(1);
+        expect(terminal?.status).toBe("completed");
 
         store.close();
     });
