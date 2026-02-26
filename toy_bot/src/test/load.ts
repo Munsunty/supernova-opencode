@@ -118,7 +118,7 @@ export class LoadTester {
 
     for (let i = 0; i < this.config.requestsPerUser; i++) {
       const pathIndex = i % this.config.paths.length;
-      const path = this.config.paths[pathIndex];
+      const path = this.config.paths[pathIndex]!;
       const requestId = `load-${userId}-${i}-${Date.now()}`;
       const input = `Load test request from user ${userId}`;
       

@@ -1,6 +1,7 @@
 # 런타임 데이터 (격리 환경에서 자동 생성)
 data/
 cache/
+opencode.runtime.json
 node_modules/
 bun.lock
 .env

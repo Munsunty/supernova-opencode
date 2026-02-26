@@ -27,16 +27,10 @@ export interface IntegrationTestSuite {
   };
 }
 
-/**
- * Integration test runner for Telegram Bot API
- */
 export class TelegramIntegrationTester {
   private bot: Bot | null = null;
   private results: IntegrationTestResult[] = [];
 
-  /**
-   * Run full integration test suite
-   */
   async runSuite(botToken?: string): Promise<IntegrationTestSuite> {
     const token = botToken || process.env.TELEGRAM_BOT_TOKEN;
     const startTime = Date.now();
@@ -62,14 +56,10 @@ export class TelegramIntegrationTester {
     };
   }
 
-  /**
-   * Run tests with real Telegram API
-   */
   private async runRealTests(token: string): Promise<void> {
     try {
       this.bot = new Bot(token);
 
-      // Test 1: Bot initialization
       await this.runTest('Bot Initialization', async () => {
         const me = await this.bot!.api.getMe();
         return {
@@ -82,7 +72,6 @@ export class TelegramIntegrationTester {
         };
       });
 
-      // Test 2: Set commands
       await this.runTest('Set Bot Commands', async () => {
         await this.bot!.api.setMyCommands([
           { command: 'start', description: 'Start the bot' },
@@ -92,9 +81,7 @@ export class TelegramIntegrationTester {
         return { success: true };
       });
 
-      // Test 3: Polling mechanism
       await this.runTest('Polling Mechanism', async () => {
-        // Start polling for 2 seconds then stop
         const pollingStart = Date.now();
         
         this.bot!.start({
@@ -103,7 +90,6 @@ export class TelegramIntegrationTester {
           },
         });
 
-        // Stop after 2 seconds
         await new Promise(resolve => setTimeout(resolve, 2000));
         await this.bot!.stop();
 
@@ -115,34 +101,26 @@ export class TelegramIntegrationTester {
         };
       });
 
-      // Test 4: Command handler registration
       await this.runTest('Command Handler Registration', async () => {
-        let handlerCalled = false;
-
         this.bot!.command('start', (ctx) => {
-          handlerCalled = true;
           return ctx.reply('Integration test start');
         });
 
-        // Verify handler is registered (grammy internal)
         return {
           success: true,
           details: {
             handlerRegistered: true,
-            note: 'Handler registered, manual testing required for full verification',
           },
         };
       });
 
-      // Test 5: Message context structure
-      await this.runTest('Message Context Structure', async () => {
+      await this.runTest('X_oc Payload Generation', async () => {
         const mockContext = {
           update: { update_id: 12345 },
           from: { id: 123, username: 'test_user', first_name: 'Test' },
           message: { text: '/test message', chat: { id: 123 } },
         } as unknown as Context;
 
-        // Verify we can create X_oc payload from context
         const payload: XOcPayload = artifactManager.createPayload({
           requestId: 'test-123',
           updateId: mockContext.update.update_id,
@@ -179,49 +157,31 @@ export class TelegramIntegrationTester {
     }
   }
 
-  /**
-   * Run mock tests without real API
-   */
   private async runMockTests(): Promise<void> {
-    // Test 1: Mock Bot Initialization
     await this.runTest('Mock Bot Initialization', async () => {
-      const mockBotInfo = {
-        id: 123456789,
-        username: 'toy_bot_test',
-        first_name: 'Toy Bot Test',
-      };
       return {
         success: true,
-        details: mockBotInfo,
+        details: { botId: 123456789, username: 'toy_bot_test' },
       };
     });
 
-    // Test 2: Mock Command Registration
     await this.runTest('Mock Command Registration', async () => {
-      const commands = [
-        { command: 'start', description: 'Start the bot' },
-        { command: 'test', description: 'Run integration test' },
-      ];
       return {
         success: true,
-        details: { commandsRegistered: commands.length },
+        details: { commandsRegistered: 2 },
       };
     });
 
-    // Test 3: Mock Polling Simulation
     await this.runTest('Mock Polling Simulation', async () => {
-      const pollingDuration = 100; // Simulated
       return {
         success: true,
         details: {
-          pollingDuration,
+          pollingDuration: 100,
           mechanism: 'long-polling',
-          note: 'Mock polling validated',
         },
       };
     });
 
-    // Test 4: X_oc Payload Generation
     await this.runTest('X_oc Payload Generation', async () => {
       const payload: XOcPayload = artifactManager.createPayload({
         requestId: 'mock-test',
@@ -239,41 +199,7 @@ export class TelegramIntegrationTester {
         path: 'success',
       });
 
-      // Verify payload structure
-      const isValid = !!(payload.requestId &&
-                      payload.timestamp &&
-                      payload.user.id &&
-                      payload.message.content);
-
-      return {
-        success: isValid,
-        details: {
-          payloadValid: isValid,
-          payloadSize: JSON.stringify(payload).length,
-        },
-      };
-    });
-      const payload: XOcPayload = artifactManager.createPayload({
-        requestId: 'mock-test',
-        updateId: 12345,
-        user: {
-          id: 123,
-          username: 'mock_user',
-          firstName: 'Mock',
-        },
-        message: {
-          type: 'text',
-          content: 'Hello from mock test',
-          chatId: 123,
-        },
-        path: 'success',
-      });
-
-      // Verify payload structure
-      const isValid = payload.requestId &&
-                      payload.timestamp &&
-                      payload.user.id &&
-                      payload.message.content;
+      const isValid = !!(payload.requestId && payload.timestamp && payload.user.id && payload.message.content);
 
       return {
         success: isValid,
@@ -284,7 +210,6 @@ export class TelegramIntegrationTester {
       };
     });
 
-    // Test 5: Error Handling
     await this.runTest('Error Handling Simulation', async () => {
       try {
         throw new Error('Simulated API error');
@@ -300,9 +225,6 @@ export class TelegramIntegrationTester {
     });
   }
 
-  /**
-   * Run a single test
-   */
   private async runTest(
     name: string,
     fn: () => Promise<{ success: boolean; details?: Record<string, unknown> }>
@@ -328,9 +250,6 @@ export class TelegramIntegrationTester {
     }
   }
 
-  /**
-   * Save test suite results
-   */
   async saveResults(suite: IntegrationTestSuite): Promise<string> {
     const filename = `integration-test-${Date.now()}.json`;
     const filepath = `${import.meta.dir}/../../artifacts/${filename}`;
@@ -342,5 +261,4 @@ export class TelegramIntegrationTester {
   }
 }
 
-// Singleton instance
 export const integrationTester = new TelegramIntegrationTester();

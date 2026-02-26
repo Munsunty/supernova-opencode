@@ -102,7 +102,7 @@ export class X4Calibrator {
       : 0;
 
     // Payload size (average)
-    const payloadSizes = artifacts.map(a => JSON.stringify(a.payload).length);
+    const payloadSizes = artifacts.map(a => a.payload ? JSON.stringify(a.payload).length : 0);
     const avgPayloadSize = payloadSizes.length > 0
       ? payloadSizes.reduce((sum, s) => sum + s, 0) / payloadSizes.length
       : 0;

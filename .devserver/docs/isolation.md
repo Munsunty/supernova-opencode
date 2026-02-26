@@ -1,11 +1,11 @@
-# XDG 격리 아키텍처 (Phase 3 완료 기준)
+# XDG + Permission 격리 아키텍처
 
 *Last Updated: 2026-02-26*  
 *Source of truth: `.devserver/dev-up.sh`, runtime paths, git history*
 
 ## 개요
 
-이 프로젝트는 XDG Base Directory 표준을 사용해 OpenCode/OmO 런타임을 프로젝트 단위로 격리한다.  
+이 프로젝트는 XDG Base Directory 표준 + runtime permission allowlist로 OpenCode/OmO 런타임을 프로젝트 단위로 격리한다.  
 핵심 목표는 **"프로젝트 경로만 주면 독립된 Dₚ가 기동"**이며, Phase 1~3 구현은 이 가정을 유지한다.
 
 ## 격리 메커니즘
@@ -22,6 +22,23 @@ opencode.json               →    .devserver/opencode.json
 
 `dev-up.sh`는 아래 5개 환경변수를 강제로 설정해 참조 경로를 `.devserver/`로 수렴시킨다.
 
+또한 시작 시점에 `.devserver/scripts/generate-opencode-config.ts`를 실행해
+`opencode.runtime.json`을 생성하고, 현재 프로젝트 절대 경로를 permission allowlist에 주입한다.
+
+## Runtime Permission 샌드박스
+
+- 생성 파일: `.devserver/opencode.runtime.json`
+- 기준 경로: `dev-up.sh` 실행 시 계산한 `PROJECT_DIR` (`pwd -P` 기반)
+- 정책: `external_directory`는 deny-by-default, `PROJECT_DIR/**`만 allow
+- `read/edit/glob/grep/list`도 `PROJECT_DIR/**`만 allow
+- `bash`는 기본 `ask` (명령 문자열 패턴 한계 때문에 보수적으로 설정)
+- `.devserver/**`는 별도 deny 유지
+
+## 선택 OS 샌드박스 (Linux only)
+
+- `X_OC_USE_BWRAP=1`일 때 Linux + bwrap 환경에서만 활성화
+- 미활성/미지원 플랫폼(macOS/Windows)에서는 permission sandbox만 적용
+
 ## 환경변수
 
 | 환경변수 | 격리 값 | 설명 |
@@ -29,7 +46,7 @@ opencode.json               →    .devserver/opencode.json
 | `XDG_CONFIG_HOME` | `.devserver/config` | OpenCode/플러그인 런타임 설정 |
 | `XDG_DATA_HOME` | `.devserver/data` | auth, DB, 로그, 세션 스토리지 |
 | `XDG_CACHE_HOME` | `.devserver/cache` | 캐시/임시 데이터 |
-| `OPENCODE_CONFIG` | `.devserver/opencode.json` | OpenCode 메인 config 지정 |
+| `OPENCODE_CONFIG` | `.devserver/opencode.runtime.json` | 시작 시 생성된 runtime config 지정 |
 | `OPENCODE_CONFIG_DIR` | `.devserver/` | OmO 포함 보조 설정 파일 루트 |
 
 ### 선택 환경변수
@@ -51,11 +68,14 @@ opencode.json               →    .devserver/opencode.json
 - **시스템 상태 데이터(Dₚ₁)**: `.devserver/data/state.db`
 - **플러그인/캐시**: `.devserver/config/opencode/**`, `.devserver/cache/opencode/**`
 - **서버 실행 바이너리(로컬 설치분)**: `.devserver/node_modules/.bin/opencode`
+- **런타임 권한 규칙(opencode.runtime.json)**: 프로젝트 경로 allowlist
 
 ### 격리되지 않는 항목
 
-- 시스템 bun/node/git 실행파일
-- OS 전역 네트워크/프로세스 자원
+- 시스템 bun/node/git 실행파일 자체
+- OS 전역 네트워크 자원(기본 설정)
+- 호스트 파일시스템 자체 (Linux bwrap 미사용 시)
+- `dev-up.sh`에서 별도로 띄우는 대시보드/X₂ 워커 프로세스
 
 ## Phase 3까지 검증된 영향
 
