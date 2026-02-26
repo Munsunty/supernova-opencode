@@ -9,8 +9,21 @@
 
 ## Current Phase
 
-- Phase 2 진행 중 (X₂ 실행 루프 통합)
-- 안정화 및 운영 검증 전
+- Phase 1~3 완료
+  - Phase 1: Dₚ 격리 + X_oc(wrapper) 완료
+  - Phase 2: X₂ task queue/worker loop 완료
+  - Phase 3: Eq₁ LLM client 실행 채널 완료
+- Phase 4 진행 중 (X₃ + X₄ 통합)
+- 운영/서비스 배포 전
+
+## Recent Milestones (docs + git 기준)
+
+- `7b757e4` — `feat(x2): finalize Phase 2 queue/worker flow`
+- `bcea588` — `feat(eq1): complete phase 3 execution path`
+- `23f4503` — `phase3: harden eq1 failure-paths, retry boundaries, and logging redaction`
+- `011c25c` — `phase4: add x3 detector loop and interaction queue scaffold`
+
+상세 상태와 완료 조건은 `docs/PHASE_STATUS.md`를 기준으로 관리합니다.
 
 ## Docs
 
@@ -18,6 +31,8 @@
 - `HOMSA.md`
 - `docs/PHASE_STATUS.md`
 - `docs/TODO.md`
+- `.devserver/docs/project-structure.md`
+- `.devserver/docs/isolation.md`
 
 ## Related Projects
 
