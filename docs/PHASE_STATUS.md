@@ -15,31 +15,50 @@
 3. `done` 전환은 해당 Phase의 완료 조건을 모두 충족했을 때만 허용한다.
 4. 각 Phase는 최소 1개의 관측 가능한 신호(status/log/write)를 남겨야 한다.
 5. So 단계 전이는 idempotent 원칙(동일 입력 재실행 안정성)을 유지한다.
+6. 개발 중 검증은 관련 개별 테스트를 우선 수행하고, Phase 종료 직전에만 전체 `bun test`를 실행한다.
 
 ## 현재 Phase 보드
 
 | Phase | 대상 | 상태 | 목표 | 완료 조건 |
 |-------|------|------|------|-----------|
 | 1 | Dₚ 격리 + X_oc | done | 격리 환경 + wrapper 안정화 | 격리된 opencode serve 가동 + SDK wrapper |
-| 2 | X₂ | in_progress | task queue 실행 루프 완성 | task 입력 시 X_oc 실행 후 결과 저장 |
-| 3 | Eq₁ | planned | LLM client 구현 | W₄ 경로 LLM 호출 가능 |
+| 2 | X₂ | done | task queue 실행 루프 완성 | task 입력 시 X_oc 실행 후 결과 저장 |
+| 3 | Eq₁ | done | LLM client 구현 | W₄ 경로 LLM 호출 가능 |
 | 4 | X₃ + X₄ | planned | interaction + routing 통합 | 전체 주기 1회 완주 |
 | 5 | X₁ | planned | 통신 프로토콜 연결 | user → 주기 → report 전체 동작 |
 
 ## Phase 상세
 
-### Phase 2 (현재 진행)
+### Phase 2 (완료)
 
 - 범위: `POLL_TASK/EXECUTE/COMPLETE/FAIL` 루프 + `ENQUEUE` 입력 인터페이스
-- 필수 조건:
-  - task 상태 전이 `pending → running → completed|failed` 정합성 확보
-  - 중복 실행 시 idempotent 보장(같은 task 재실행 안정성)
-  - 실행 결과 관측 가능(최소 status/log/write)
-- 종료 기준: task 1건 입력으로 1cycle 완료 및 결과 저장 확인
+- 구현 완료:
+  - `store/queue/router/summarizer` 통합 루프 (`.devserver/x2/worker.ts`)
+  - 상태 전이 정합화 (`pending → running → completed|failed`)
+  - 중복 실행 방지(idempotent 가드 + pending atomic claim)
+  - 관측 로그 추가(`status`, `duration_ms`, `backlog`)
+  - 실패/재시도 최소 정책 + stale running 복구 처리
+  - 성공 1cycle 스모크 검증 완료 (`completed` + `result` 저장)
+  - 재시도 정책 확정 (`maxRetries=1`, `retry backoff=3s -> 60s cap`, `running timeout=120s`)
+  - Phase 종료 직전 전체 `bun test` 통과
+- 상태: Phase 2 종료, Phase 3(Eq₁) 착수 가능
 
 ### Phase 3
 
 - 범위: Eq₁ LLM client + task type(`classify/evaluate/summarize/route`) 실행 채널 분리
+- 준비 완료:
+  - Eq₁ task type 상수/검증 유틸 추가 (`.devserver/eq1/task-types.ts`)
+  - Eq₁ provider 인터페이스 + client 스캐폴드 추가 (`.devserver/eq1/llm-client.ts`)
+  - 공용 유틸 연동 (`.devserver/utils/retry.ts`, `.devserver/utils/logging.ts`)
+  - Phase 3 준비 테스트 추가/통과 (`test/eq1.llm-client.test.ts`)
+- 구현 완료:
+  - provider adapter 연결 (cerebras 1순위, groq 2순위, openai-compatible 공통)
+  - X₂ task schema 확장(`tasks.type`) 및 Eq₁ task 실행 경로 연결
+  - Eq₁ 실행 결과를 `tasks.result` JSON으로 저장
+  - worker enqueue 시 task type 지정 가능(`--type`)
+- 검증 완료:
+  - live key 기준 `eq1:smoke` 성공 (`2026-02-26`, provider=`cerebras`, attempts=1)
+  - Phase 종료 직전 전체 `bun test` 통과
 - 종료 기준: W₄ 경로에서 LLM 호출 성공 + 결과 저장
 
 ### Phase 4

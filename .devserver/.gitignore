@@ -3,6 +3,9 @@ data/
 cache/
 node_modules/
 bun.lock
+.env
+.env.*
+!.env.example
 
 # 스크린샷
 screenshots/

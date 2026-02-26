@@ -333,9 +333,19 @@ interactions (
   │   ├── dashboard-screenshot.ts     ← Dashboard 캡처 POC (puppeteer-core)
   │   ├── x2/                         ← X₂ 모듈 (초기 구현, 리팩토링 대상)
   │   │   ├── store.ts                ← state.db 관리 (bun:sqlite, Task CRUD)
-  │   │   ├── queue.ts                ← 대기열 + 순차 실행 (1:1 정책)
+  │   │   ├── queue.ts                ← 대기열 + dispatch/finalize + retry_at 백오프
   │   │   ├── router.ts               ← 결과 분기 (Reporter 인터페이스)
-  │   │   └── summarizer.ts           ← PromptResult → 요약/비용/변경사항 (리팩토링 대상: 판단 맥락 생성기로 전환)
+  │   │   ├── summarizer.ts           ← PromptResult → 요약/비용/변경사항
+  │   │   └── worker.ts               ← X₂ 워커 엔트리 (loop/once)
+  │   ├── eq1/                        ← Eq₁ 모듈 (Phase 3)
+  │   │   ├── task-types.ts           ← classify/evaluate/summarize/route 상수/검증
+  │   │   ├── types.ts                ← provider/client 공통 타입
+  │   │   ├── llm-client.ts           ← W₄ LLM client 스캐폴드 (provider 교체 가능)
+  │   │   ├── mock-provider.ts        ← 테스트용 provider
+  │   │   └── index.ts                ← Eq₁ export
+  │   ├── utils/                      ← 공용 유틸
+  │   │   ├── retry.ts                ← 재시도/백오프 공용 함수
+  │   │   └── logging.ts              ← 구조화 로그 공용 함수
   │   ├── config/opencode/            ← XDG_CONFIG_HOME (런타임 자동 생성)
   │   ├── data/opencode/              ← XDG_DATA_HOME
   │   │   ├── auth.json               ← 인증 정보 (OAuth 토큰)
@@ -412,8 +422,8 @@ bun run dashboard
 | Phase | 대상 | 내용 | 완료 조건 | 상태 |
 |-------|------|------|-----------|------|
 | 1 | Dₚ 격리 + X_oc | 격리 환경, wrapper | 격리된 opencode serve 가동 + SDK wrapper | ✅ 완료 |
-| 2 | X₂ | `POLL_TASK/EXECUTE/COMPLETE/FAIL` 실행 루프 + `ENQUEUE` 입력 인터페이스 | task 넣으면 X_oc가 실행하고 결과 저장 | 진행 중 |
-| 3 | Eq₁ | LLM client 구현 | W₄ 경로로 LLM 호출 가능 | - |
+| 2 | X₂ | `POLL_TASK/EXECUTE/COMPLETE/FAIL` 실행 루프 + `ENQUEUE` 입력 인터페이스 | task 넣으면 X_oc가 실행하고 결과 저장 | ✅ 완료 |
+| 3 | Eq₁ | LLM client 구현 | W₄ 경로로 LLM 호출 가능 | ✅ 완료 |
 | 4 | X₃ + X₄ | 병렬 구현. X₃: oc interaction, X₄: 맥락 생성 + 라우팅 | 전체 주기 1회 완주 | - |
 | 5 | X₁ | 통신 프로토콜 (Telegram) | user → 주기 → report 전체 동작 | - |
 
@@ -439,6 +449,8 @@ bun run dashboard
 8. **LLM 호출은 loop성 task chain**: 양방향 → 단방향 순차 변환, task chain이 판단 맥락 제공
 9. **판단 기준 ≠ 판단 맥락**: 기준 = CLAUDE.md (Dₚ₁, 불변), 맥락 = task chain (summarizer 생성, task별). 기준은 이력에 의해 변하지 않음
 10. **npm 패키지 배포**: 바이너리 번들링 불가(opencode는 Go 바이너리), Docker는 옵션
+11. **테스트 운영 규칙**: 개발 중에는 관련 개별 테스트를 우선 실행하고, Phase 종료 직전에만 전체 `bun test`를 실행
+12. **공용 유틸 우선**: 재시도/로깅 같은 횡단 관심사는 `.devserver/utils` 공용 함수로 통일하고, 모듈별 중복 구현을 금지
 
 ---
 

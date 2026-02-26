@@ -1,11 +1,14 @@
 {
-  "name": "opencode-supernova-devserver",
-  "private": true,
-  "dependencies": {
-    "@opencode-ai/plugin": "1.2.11",
-    "@opencode-ai/sdk": "^1.2.11",
-    "oh-my-opencode": "^3.8.5",
-    "opencode-ai": "^1.2.11",
-    "puppeteer-core": "^24.37.5"
-  }
+    "name": "opencode-supernova-devserver",
+    "private": true,
+    "scripts": {
+        "eq1:smoke": "bun run eq1/smoke.ts"
+    },
+    "dependencies": {
+        "@opencode-ai/plugin": "1.2.11",
+        "@opencode-ai/sdk": "^1.2.11",
+        "oh-my-opencode": "^3.8.5",
+        "opencode-ai": "^1.2.11",
+        "puppeteer-core": "^24.37.5"
+    }
 }

@@ -7,13 +7,16 @@
 
 import { Database } from "bun:sqlite";
 import { randomUUIDv7 } from "bun";
+import { isEq1TaskType, type Eq1TaskType } from "../eq1/task-types";
 
 const DEFAULT_DB_PATH = new URL("../data/state.db", import.meta.url).pathname;
 
 export type TaskStatus = "pending" | "running" | "completed" | "failed";
+export type TaskType = "omo_request" | Eq1TaskType | "report";
 
 export interface Task {
     id: string;
+    type: TaskType;
     prompt: string;
     status: TaskStatus;
     attempts: number;
@@ -49,6 +52,7 @@ export class Store {
         this.db.exec(`
       CREATE TABLE IF NOT EXISTS tasks (
         id TEXT PRIMARY KEY,
+        type TEXT NOT NULL DEFAULT 'omo_request',
         prompt TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'pending',
         attempts INTEGER NOT NULL DEFAULT 0,
@@ -63,10 +67,14 @@ export class Store {
         updated_at INTEGER NOT NULL
       )
     `);
+        this.ensureColumn("type", "TEXT NOT NULL DEFAULT 'omo_request'");
         this.ensureColumn("attempts", "INTEGER NOT NULL DEFAULT 0");
         this.ensureColumn("retry_at", "INTEGER");
         this.ensureColumn("started_at", "INTEGER");
         this.ensureColumn("completed_at", "INTEGER");
+        this.db.exec(
+            `UPDATE tasks SET type = 'omo_request' WHERE type IS NULL OR type = ''`,
+        );
         // 기존 데이터 호환: v1 상태값 done -> completed
         this.db.exec(
             `UPDATE tasks SET status = 'completed' WHERE status = 'done'`,
@@ -91,15 +99,19 @@ export class Store {
         }
     }
 
-    createTask(prompt: string, source: string = "cli"): Task {
+    createTask(
+        prompt: string,
+        source: string = "cli",
+        type: TaskType = "omo_request",
+    ): Task {
         const now = Date.now();
         const id = randomUUIDv7();
         this.db
             .prepare(
-                `INSERT INTO tasks (id, prompt, status, attempts, source, created_at, updated_at)
-         VALUES (?, ?, 'pending', 0, ?, ?, ?)`,
+                `INSERT INTO tasks (id, type, prompt, status, attempts, source, created_at, updated_at)
+         VALUES (?, ?, ?, 'pending', 0, ?, ?, ?)`,
             )
-            .run(id, prompt, source, now, now);
+            .run(id, type, prompt, source, now, now);
         return this.getTask(id)!;
     }
 
@@ -110,13 +122,25 @@ export class Store {
         return row ? this.rowToTask(row) : null;
     }
 
-    listTasks(filter?: { status?: TaskStatus; limit?: number }): Task[] {
+    listTasks(filter?: {
+        status?: TaskStatus;
+        type?: TaskType;
+        limit?: number;
+    }): Task[] {
         let sql = "SELECT * FROM tasks";
         const params: unknown[] = [];
+        const wheres: string[] = [];
 
         if (filter?.status) {
-            sql += " WHERE status = ?";
+            wheres.push("status = ?");
             params.push(filter.status);
+        }
+        if (filter?.type) {
+            wheres.push("type = ?");
+            params.push(filter.type);
+        }
+        if (wheres.length > 0) {
+            sql += ` WHERE ${wheres.join(" AND ")}`;
         }
 
         sql += " ORDER BY created_at ASC";
@@ -300,8 +324,16 @@ export class Store {
     private rowToTask(row: Record<string, unknown>): Task {
         const rawStatus = row.status as string;
         const normalizedStatus = rawStatus === "done" ? "completed" : rawStatus;
+        const rawType = (row.type as string | undefined) ?? "omo_request";
+        const normalizedType: TaskType =
+            rawType === "omo_request" || rawType === "report"
+                ? rawType
+                : isEq1TaskType(rawType)
+                  ? rawType
+                  : "omo_request";
         return {
             id: row.id as string,
+            type: normalizedType,
             prompt: row.prompt as string,
             status: normalizedStatus as TaskStatus,
             attempts: Number(row.attempts ?? 0),

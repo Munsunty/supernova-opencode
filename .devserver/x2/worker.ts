@@ -1,12 +1,15 @@
 import { OpenCodeServer } from "../opencode-server-wrapper";
 import { Queue } from "./queue";
 import { Router, ConsoleReporter } from "./router";
-import { Store, type Task } from "./store";
+import { Store, type Task, type TaskType } from "./store";
+import { createEq1ClientFromEnv } from "../eq1/create-client";
+import { isEq1TaskType } from "../eq1/task-types";
 import { createLogger } from "../utils/logging";
 import { retryAsync } from "../utils/retry";
 
 interface WorkerOptions {
     enqueuePrompt: string | null;
+    enqueueType: TaskType;
     source: string;
     once: boolean;
     intervalMs: number;
@@ -19,9 +22,25 @@ interface WorkerOptions {
 
 const logger = createLogger("X2.Worker");
 
+function isTaskType(value: string): value is TaskType {
+    return (
+        value === "omo_request" || value === "report" || isEq1TaskType(value)
+    );
+}
+
+function assertTaskType(value: string): TaskType {
+    if (!isTaskType(value)) {
+        throw new Error(
+            `--type must be one of: omo_request, classify, evaluate, summarize, route, report`,
+        );
+    }
+    return value;
+}
+
 function parseArgs(argv: string[]): WorkerOptions {
     const options: WorkerOptions = {
         enqueuePrompt: null,
+        enqueueType: "omo_request",
         source: "cli",
         once: false,
         intervalMs: 3000,
@@ -45,6 +64,11 @@ function parseArgs(argv: string[]): WorkerOptions {
             case "--source":
                 if (!next) throw new Error("--source requires a value");
                 options.source = next;
+                i++;
+                break;
+            case "--type":
+                if (!next) throw new Error("--type requires a task type");
+                options.enqueueType = assertTaskType(next);
                 i++;
                 break;
             case "--once":
@@ -123,6 +147,7 @@ function printHelp() {
 
 Options:
   --enqueue "<prompt>"   Create a new task before running
+  --type <taskType>      Task type (omo_request|classify|evaluate|summarize|route|report)
   --source <name>        Task source label (default: cli)
   --once                 Process until queue is idle, then exit
   --interval <ms>        Loop interval for daemon mode (default: 3000)
@@ -181,7 +206,20 @@ async function main() {
         "Interrupted while task was running",
     );
     const server = OpenCodeServer.getInstance(options.baseUrl);
+    let eq1Client: ReturnType<typeof createEq1ClientFromEnv> | null = null;
+
+    try {
+        eq1Client = createEq1ClientFromEnv();
+        logger.info("eq1_client_enabled", {
+            provider: process.env.EQ1_PROVIDER ?? "cerebras",
+        });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.warn("eq1_client_disabled", { reason: message });
+    }
+
     const queue = new Queue(store, server, {
+        eq1Client,
         maxRetries: options.maxRetries,
         retryBaseDelayMs: options.retryBaseMs,
         retryMaxDelayMs: options.retryMaxMs,
@@ -219,9 +257,14 @@ async function main() {
     }
 
     if (options.enqueuePrompt) {
-        const task = queue.enqueue(options.enqueuePrompt, options.source);
+        const task = queue.enqueue(
+            options.enqueuePrompt,
+            options.source,
+            options.enqueueType,
+        );
         logger.info("task_enqueued", {
             id: task.id,
+            type: task.type,
             source: task.source,
             status: task.status,
         });

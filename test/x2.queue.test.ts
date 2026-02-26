@@ -136,6 +136,36 @@ class FakeServer {
     }
 }
 
+class FakeEq1Client {
+    public runCalls = 0;
+    public throwOnRun = false;
+
+    async run(request: {
+        type: "classify" | "evaluate" | "summarize" | "route";
+        input: string;
+        context?: Record<string, unknown>;
+    }) {
+        this.runCalls++;
+        if (this.throwOnRun) {
+            throw new Error("eq1 run failed");
+        }
+
+        return {
+            type: request.type,
+            output: {
+                action: "auto",
+                reason: `handled: ${request.input}`,
+            },
+            rawText: JSON.stringify({ action: "auto" }),
+            attempts: 1,
+            provider: "mock-eq1",
+            model: "mock-model",
+            usage: null,
+            latencyMs: 1,
+        };
+    }
+}
+
 const tempDirs: string[] = [];
 
 function createStore(): Store {
@@ -153,6 +183,50 @@ afterEach(() => {
 });
 
 describe("X2 Queue", () => {
+    test("dispatchNext completes Eq1 task and stores JSON result", async () => {
+        const store = createStore();
+        const server = new FakeServer();
+        const eq1Client = new FakeEq1Client();
+        const queue = new Queue(store, server as never, {
+            maxRetries: 0,
+            eq1Client: eq1Client as never,
+        });
+
+        queue.enqueue("classify this", "eq1", "classify");
+        const terminal = await queue.dispatchNext();
+
+        expect(terminal).toBeDefined();
+        expect(terminal?.status).toBe("completed");
+        expect(terminal?.type).toBe("classify");
+        expect(server.promptCalls).toBe(0);
+        expect(eq1Client.runCalls).toBe(1);
+        expect(terminal?.result).toBeString();
+
+        const parsed = JSON.parse(terminal!.result!);
+        expect(parsed.type).toBe("classify");
+        expect(parsed.output.action).toBe("auto");
+        expect(store.getStats().completed).toBe(1);
+
+        store.close();
+    });
+
+    test("Eq1 task fails when eq1Client is not configured", async () => {
+        const store = createStore();
+        const server = new FakeServer();
+        const queue = new Queue(store, server as never, {
+            maxRetries: 0,
+        });
+
+        queue.enqueue("classify this", "eq1", "classify");
+        const terminal = await queue.dispatchNext();
+
+        expect(terminal).toBeDefined();
+        expect(terminal?.status).toBe("failed");
+        expect(terminal?.error).toContain("eq1Client is not configured");
+
+        store.close();
+    });
+
     test("dispatchNext claims pending and sends promptAsync", async () => {
         const store = createStore();
         const server = new FakeServer();

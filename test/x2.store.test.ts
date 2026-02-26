@@ -21,6 +21,19 @@ afterEach(() => {
 });
 
 describe("X2 Store", () => {
+    test("createTask persists task type and list filter by type", () => {
+        const store = createStore();
+        store.createTask("xoc", "cli", "omo_request");
+        const t2 = store.createTask("classify me", "eq1", "classify");
+
+        const eq1Only = store.listTasks({ type: "classify" });
+        expect(eq1Only.length).toBe(1);
+        expect(eq1Only[0]?.id).toBe(t2.id);
+        expect(eq1Only[0]?.type).toBe("classify");
+
+        store.close();
+    });
+
     test("claimNextPending atomically moves pending -> running", () => {
         const store = createStore();
         const t1 = store.createTask("a");

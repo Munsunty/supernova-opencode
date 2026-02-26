@@ -8,8 +8,10 @@
  */
 
 import { summarize, formatSummary } from "./summarizer";
-import { Store, type Task } from "./store";
+import { Store, type Task, type TaskType } from "./store";
 import { computeBackoffDelay } from "../utils/retry";
+import type { Eq1Client } from "../eq1/llm-client";
+import { isEq1TaskType } from "../eq1/task-types";
 import type {
     OpenCodeServer,
     MessageWithParts,
@@ -23,6 +25,7 @@ interface FailureOptions {
 }
 
 export interface QueueOptions {
+    eq1Client?: Eq1Client | null;
     maxRetries?: number;
     runningTimeoutMs?: number;
     retryBaseDelayMs?: number;
@@ -33,6 +36,7 @@ export interface QueueOptions {
 export class Queue {
     private store: Store;
     private server: OpenCodeServer;
+    private eq1Client: Eq1Client | null;
     private loopTimer: ReturnType<typeof setInterval> | null = null;
     private processingCycle = false;
     private maxRetries: number;
@@ -48,6 +52,7 @@ export class Queue {
     ) {
         this.store = store;
         this.server = server;
+        this.eq1Client = options.eq1Client ?? null;
         this.maxRetries = options.maxRetries ?? 1;
         this.runningTimeoutMs = options.runningTimeoutMs ?? 120_000;
         this.retryBaseDelayMs = options.retryBaseDelayMs ?? 3_000;
@@ -55,13 +60,62 @@ export class Queue {
         this.now = options.now ?? (() => Date.now());
     }
 
-    enqueue(prompt: string, source: string = "cli"): Task {
-        return this.store.createTask(prompt, source);
+    enqueue(
+        prompt: string,
+        source: string = "cli",
+        type: TaskType = "omo_request",
+    ): Task {
+        return this.store.createTask(prompt, source, type);
     }
 
     async dispatchNext(): Promise<Task | null> {
         const task = this.store.claimNextPending(this.now());
         if (!task) return null;
+
+        if (isEq1TaskType(task.type)) {
+            try {
+                if (!this.eq1Client) {
+                    throw new Error(
+                        "Eq1 task cannot run: eq1Client is not configured",
+                    );
+                }
+
+                const result = await this.eq1Client.run({
+                    type: task.type,
+                    input: task.prompt,
+                    context: {
+                        source: task.source,
+                        taskId: task.id,
+                    },
+                });
+
+                const stored = JSON.stringify(
+                    {
+                        type: result.type,
+                        provider: result.provider,
+                        model: result.model,
+                        attempts: result.attempts,
+                        usage: result.usage,
+                        latencyMs: result.latencyMs,
+                        output: result.output,
+                    },
+                    null,
+                    2,
+                );
+
+                return this.store.updateTask(task.id, {
+                    status: "completed",
+                    retryAt: null,
+                    result: stored,
+                    error: null,
+                    completedAt: this.now(),
+                });
+            } catch (error) {
+                return this.handleFailure(task, error, {
+                    resetSession: false,
+                });
+            }
+        }
 
         try {
             const session = task.sessionId
