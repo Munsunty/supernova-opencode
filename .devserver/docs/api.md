@@ -1,8 +1,11 @@
 # OpenCode HTTP API
 
+*Last Updated: 2026-02-26 (Phase 3 완료 반영)*
+
 > 공식 문서: https://opencode.ai/docs/server / https://opencode.ai/docs/sdk
 > OpenAPI 스펙: `GET /doc` (OpenAPI 3.1, version 0.0.3)
 > **총 83 엔드포인트, 151 스키마**
+> 본 문서는 wrapper/queue/eq1 구현 시점(Phase 3 완료) 기준 정리다.
 
 ## 개요
 
