@@ -78,7 +78,9 @@
   - interaction queue 저장 경로 추가 (`.devserver/x2/store.ts`, `interactions` 테이블)
   - X₃ evaluator/responder 구현 완료 (`.devserver/x3/evaluator.ts`, `.devserver/x3/responder.ts`, `.devserver/x3/processor.ts`)
   - W₄ 결과를 interaction queue에 구조화 저장 (`interactions.answer`, `schema_version=x3_interaction_result.v1`)
-  - detector/processor 검증 테스트 추가/통과 (`test/x3.detector.test.ts`, `test/x3.processor.test.ts`)
+  - X₄ summarizer/router 구현 (`.devserver/x4/summarizer.ts`, `.devserver/x4/router.ts`)
+  - user 분기 시 `report/new_task/skip` 라우팅 + task 생성 경로 연결
+  - detector/processor/x4-router 검증 테스트 추가/통과 (`test/x3.detector.test.ts`, `test/x3.processor.test.ts`, `test/x4.router.test.ts`)
 - 종료 기준: permission/question 분기 + 후속 route(report/new task) 동작
 
 ### Phase 5

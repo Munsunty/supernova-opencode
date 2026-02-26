@@ -13,6 +13,21 @@ interface InteractionServer {
     replyQuestion(requestId: string, answers: string[][]): Promise<boolean>;
 }
 
+interface X4Router {
+    routeInteraction(
+        interaction: Interaction,
+        evaluation: InteractionEvaluation,
+    ): Promise<{
+        decision: {
+            action: "report" | "new_task" | "skip";
+            reason: string;
+            prompt: string | null;
+            raw: Record<string, unknown>;
+        };
+        task: Task | null;
+    }>;
+}
+
 export interface ResponderResult {
     interaction: Interaction;
     route: "auto" | "user";
@@ -49,15 +64,17 @@ export class InteractionResponder {
     private store: Store;
     private server: InteractionServer;
     private autoThreshold: number;
+    private x4Router: X4Router | null;
 
     constructor(
         store: Store,
         server: InteractionServer,
-        options: { autoThreshold?: number } = {},
+        options: { autoThreshold?: number; x4Router?: X4Router | null } = {},
     ) {
         this.store = store;
         this.server = server;
         this.autoThreshold = options.autoThreshold ?? 6;
+        this.x4Router = options.x4Router ?? null;
     }
 
     async respond(
@@ -69,11 +86,23 @@ export class InteractionResponder {
             evaluation.score <= this.autoThreshold;
 
         if (!shouldAuto) {
-            const reportTask = this.store.createTask(
-                buildReportPrompt(interaction, evaluation),
-                "x3",
-                "report",
-            );
+            const routed = this.x4Router
+                ? await this.x4Router.routeInteraction(interaction, evaluation)
+                : {
+                      decision: {
+                          action: "report" as const,
+                          reason: evaluation.reason,
+                          prompt: null,
+                          raw: {},
+                      },
+                      task: this.store.createTask(
+                          buildReportPrompt(interaction, evaluation),
+                          "x3",
+                          "report",
+                      ),
+                  };
+
+            const reportTask = routed.task;
             const updated = this.store.updateInteraction(interaction.id, {
                 status: "answered",
                 answer: JSON.stringify({
@@ -86,14 +115,16 @@ export class InteractionResponder {
                         route: evaluation.route,
                         raw: evaluation.raw,
                     },
-                    report_task_id: reportTask.id,
+                    x4_decision: routed.decision,
+                    report_task_id: reportTask?.id ?? null,
                 }),
                 answeredAt: Date.now(),
             });
             logger.info("interaction_routed_user", {
                 interaction: interaction.id.slice(0, 8),
                 requestId: interaction.requestId,
-                reportTask: reportTask.id.slice(0, 8),
+                routeAction: routed.decision.action,
+                reportTask: reportTask ? reportTask.id.slice(0, 8) : null,
                 score: evaluation.score,
             });
             return {

@@ -6,6 +6,7 @@ import { InteractionDetector } from "./detector";
 import { InteractionEvaluator } from "./evaluator";
 import { InteractionProcessor } from "./processor";
 import { InteractionResponder } from "./responder";
+import { X4Router } from "../x4/router";
 
 interface WorkerOptions {
     once: boolean;
@@ -103,7 +104,10 @@ async function main() {
     try {
         const eq1Client = createEq1ClientFromEnv();
         const evaluator = new InteractionEvaluator(eq1Client);
-        const responder = new InteractionResponder(store, server);
+        const x4Router = new X4Router(store, eq1Client);
+        const responder = new InteractionResponder(store, server, {
+            x4Router,
+        });
         processor = new InteractionProcessor(store, evaluator, responder);
         logger.info("x3_eq1_enabled", {
             provider: process.env.EQ1_PROVIDER ?? "cerebras",
