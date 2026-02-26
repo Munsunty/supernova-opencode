@@ -13,6 +13,8 @@ const DEFAULT_DB_PATH = new URL("../data/state.db", import.meta.url).pathname;
 
 export type TaskStatus = "pending" | "running" | "completed" | "failed";
 export type TaskType = "omo_request" | Eq1TaskType | "report";
+export type InteractionType = "permission" | "question";
+export type InteractionStatus = "pending" | "answered" | "rejected";
 
 export interface Task {
     id: string;
@@ -31,11 +33,30 @@ export interface Task {
     updatedAt: number;
 }
 
+export interface Interaction {
+    id: string;
+    type: InteractionType;
+    requestId: string;
+    sessionId: string | null;
+    payload: string;
+    status: InteractionStatus;
+    answer: string | null;
+    createdAt: number;
+    answeredAt: number | null;
+    updatedAt: number;
+}
+
 export interface TaskStats {
     pending: number;
     running: number;
     completed: number;
     failed: number;
+}
+
+export interface InteractionStats {
+    pending: number;
+    answered: number;
+    rejected: number;
 }
 
 export class Store {
@@ -66,7 +87,7 @@ export class Store {
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
       )
-    `);
+	    `);
         this.ensureColumn("type", "TEXT NOT NULL DEFAULT 'omo_request'");
         this.ensureColumn("attempts", "INTEGER NOT NULL DEFAULT 0");
         this.ensureColumn("retry_at", "INTEGER");
@@ -83,8 +104,29 @@ export class Store {
       CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)
     `);
         this.db.exec(`
-      CREATE INDEX IF NOT EXISTS idx_tasks_created ON tasks(created_at)
-    `);
+	      CREATE INDEX IF NOT EXISTS idx_tasks_created ON tasks(created_at)
+	    `);
+        this.db.exec(`
+	      CREATE TABLE IF NOT EXISTS interactions (
+	        id TEXT PRIMARY KEY,
+	        type TEXT NOT NULL,
+	        request_id TEXT NOT NULL,
+	        session_id TEXT,
+	        payload TEXT NOT NULL,
+	        status TEXT NOT NULL DEFAULT 'pending',
+	        answer TEXT,
+	        created_at INTEGER NOT NULL,
+	        answered_at INTEGER,
+	        updated_at INTEGER NOT NULL,
+	        UNIQUE(type, request_id)
+	      )
+	    `);
+        this.db.exec(`
+	      CREATE INDEX IF NOT EXISTS idx_interactions_status ON interactions(status)
+	    `);
+        this.db.exec(`
+	      CREATE INDEX IF NOT EXISTS idx_interactions_created ON interactions(created_at)
+	    `);
     }
 
     private ensureColumn(column: string, definition: string) {
@@ -317,6 +359,157 @@ export class Store {
         return stats;
     }
 
+    upsertInteraction(input: {
+        type: InteractionType;
+        requestId: string;
+        sessionId?: string | null;
+        payload: string;
+    }): { interaction: Interaction; created: boolean } {
+        const now = Date.now();
+        const id = randomUUIDv7();
+        const result = this.db
+            .prepare(
+                `INSERT INTO interactions (
+                   id, type, request_id, session_id, payload, status, created_at, updated_at
+                 ) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)
+                 ON CONFLICT(type, request_id) DO NOTHING`,
+            )
+            .run(
+                id,
+                input.type,
+                input.requestId,
+                input.sessionId ?? null,
+                input.payload,
+                now,
+                now,
+            );
+
+        const interaction = this.getInteractionByRequest(
+            input.type,
+            input.requestId,
+        );
+        if (!interaction) {
+            throw new Error(
+                `Failed to upsert interaction: ${input.type}:${input.requestId}`,
+            );
+        }
+
+        return {
+            interaction,
+            created: result.changes > 0,
+        };
+    }
+
+    getInteraction(id: string): Interaction | null {
+        const row = this.db
+            .prepare("SELECT * FROM interactions WHERE id = ?")
+            .get(id) as Record<string, unknown> | null;
+        return row ? this.rowToInteraction(row) : null;
+    }
+
+    getInteractionByRequest(
+        type: InteractionType,
+        requestId: string,
+    ): Interaction | null {
+        const row = this.db
+            .prepare(
+                "SELECT * FROM interactions WHERE type = ? AND request_id = ?",
+            )
+            .get(type, requestId) as Record<string, unknown> | null;
+        return row ? this.rowToInteraction(row) : null;
+    }
+
+    listInteractions(filter?: {
+        status?: InteractionStatus;
+        type?: InteractionType;
+        limit?: number;
+    }): Interaction[] {
+        let sql = "SELECT * FROM interactions";
+        const params: unknown[] = [];
+        const wheres: string[] = [];
+
+        if (filter?.status) {
+            wheres.push("status = ?");
+            params.push(filter.status);
+        }
+        if (filter?.type) {
+            wheres.push("type = ?");
+            params.push(filter.type);
+        }
+        if (wheres.length > 0) {
+            sql += ` WHERE ${wheres.join(" AND ")}`;
+        }
+
+        sql += " ORDER BY created_at ASC";
+
+        if (filter?.limit) {
+            sql += " LIMIT ?";
+            params.push(filter.limit);
+        }
+
+        const rows = this.db.prepare(sql).all(...params) as Record<
+            string,
+            unknown
+        >[];
+        return rows.map((row) => this.rowToInteraction(row));
+    }
+
+    updateInteraction(
+        id: string,
+        updates: Partial<
+            Pick<Interaction, "status" | "answer" | "answeredAt" | "sessionId">
+        >,
+    ): Interaction {
+        const sets: string[] = [];
+        const params: unknown[] = [];
+
+        if (updates.status !== undefined) {
+            sets.push("status = ?");
+            params.push(updates.status);
+        }
+        if (updates.answer !== undefined) {
+            sets.push("answer = ?");
+            params.push(updates.answer);
+        }
+        if (updates.answeredAt !== undefined) {
+            sets.push("answered_at = ?");
+            params.push(updates.answeredAt);
+        }
+        if (updates.sessionId !== undefined) {
+            sets.push("session_id = ?");
+            params.push(updates.sessionId);
+        }
+
+        sets.push("updated_at = ?");
+        params.push(Date.now());
+        params.push(id);
+
+        this.db
+            .prepare(`UPDATE interactions SET ${sets.join(", ")} WHERE id = ?`)
+            .run(...params);
+        return this.getInteraction(id)!;
+    }
+
+    getInteractionStats(): InteractionStats {
+        const rows = this.db
+            .prepare(
+                "SELECT status, COUNT(*) as count FROM interactions GROUP BY status",
+            )
+            .all() as { status: string; count: number }[];
+
+        const stats: InteractionStats = {
+            pending: 0,
+            answered: 0,
+            rejected: 0,
+        };
+        for (const row of rows) {
+            if (row.status in stats) {
+                stats[row.status as keyof InteractionStats] = row.count;
+            }
+        }
+        return stats;
+    }
+
     close() {
         this.db.close();
     }
@@ -345,6 +538,34 @@ export class Store {
             startedAt: (row.started_at as number) ?? null,
             completedAt: (row.completed_at as number) ?? null,
             createdAt: row.created_at as number,
+            updatedAt: row.updated_at as number,
+        };
+    }
+
+    private rowToInteraction(row: Record<string, unknown>): Interaction {
+        const rawType = row.type as string;
+        const normalizedType: InteractionType =
+            rawType === "permission" || rawType === "question"
+                ? rawType
+                : "question";
+        const rawStatus = row.status as string;
+        const normalizedStatus: InteractionStatus =
+            rawStatus === "pending" ||
+            rawStatus === "answered" ||
+            rawStatus === "rejected"
+                ? rawStatus
+                : "pending";
+
+        return {
+            id: row.id as string,
+            type: normalizedType,
+            requestId: row.request_id as string,
+            sessionId: (row.session_id as string) ?? null,
+            payload: row.payload as string,
+            status: normalizedStatus,
+            answer: (row.answer as string) ?? null,
+            createdAt: row.created_at as number,
+            answeredAt: (row.answered_at as number) ?? null,
             updatedAt: row.updated_at as number,
         };
     }

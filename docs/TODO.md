@@ -12,11 +12,10 @@
 
 ## In Progress
 
-- [ ] [P2][X₃] permission/question detector loop 구현
+- [ ] [P2][X₃] evaluator(score) + responder(자동/사용자 분기) 구현
 
 ## Next (Phase 4-5)
 
-- [ ] [P2][X₃] evaluator(score) + responder(자동/사용자 분기) 구현
 - [ ] [P2][X₄] W₄ 결과를 interaction queue 저장 경로로도 확장(X₃/X₄ 연동 대비)
 
 ## Backlog (Phase 4-5)
@@ -46,3 +45,4 @@
 - [x] [P1][Eq₁] retry 책임 분리(provider-level 우선, task-level 중첩 차단)
 - [x] [P1][Eq₁] `tasks.result` 스키마 버전 + `request_hash` 저장
 - [x] [P1][Ops] logging redaction 적용 + 테스트 추가
+- [x] [P2][X₃] permission/question detector loop 구현

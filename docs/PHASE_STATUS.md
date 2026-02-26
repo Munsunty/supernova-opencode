@@ -24,7 +24,7 @@
 | 1 | Dₚ 격리 + X_oc | done | 격리 환경 + wrapper 안정화 | 격리된 opencode serve 가동 + SDK wrapper |
 | 2 | X₂ | done | task queue 실행 루프 완성 | task 입력 시 X_oc 실행 후 결과 저장 |
 | 3 | Eq₁ | done | LLM client 구현 | W₄ 경로 호출 + 실패 경로 검증 + 결과 스키마 기록 |
-| 4 | X₃ + X₄ | planned | interaction + routing 통합 | 전체 주기 1회 완주 |
+| 4 | X₃ + X₄ | in_progress | interaction + routing 통합 | 전체 주기 1회 완주 |
 | 5 | X₁ | planned | 통신 프로토콜 연결 | user → 주기 → report 전체 동작 |
 
 ## Phase 상세
@@ -73,6 +73,10 @@
 ### Phase 4
 
 - 범위: X₃(detector/evaluator/responder), X₄(summarizer/router) 병렬 구현
+- 진행 현황:
+  - X₃ detector loop 1차 구현 완료 (`.devserver/x3/detector.ts`, `.devserver/x3/worker.ts`)
+  - interaction queue 저장 경로 추가 (`.devserver/x2/store.ts`, `interactions` 테이블)
+  - detector 검증 테스트 추가/통과 (`test/x3.detector.test.ts`)
 - 종료 기준: permission/question 분기 + 후속 route(report/new task) 동작
 
 ### Phase 5
