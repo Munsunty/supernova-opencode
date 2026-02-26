@@ -9,10 +9,22 @@ const LEVEL_PRIORITY: Record<LogLevel, number> = {
     error: 40,
 };
 
+const SENSITIVE_KEY_RE =
+    /(authorization|api[_-]?key|token|secret|password|cookie|set-cookie)/i;
+const SENSITIVE_VALUE_RE =
+    /(bearer\s+[a-z0-9._-]+|sk-[a-z0-9_-]+|ghp_[a-z0-9]+)/i;
+const PROMPTLIKE_KEY_RE =
+    /(prompt|content|response|result|raw|input|output|text)/i;
+
 function normalizeLevel(value?: string): LogLevel {
     if (!value) return "info";
     const lower = value.toLowerCase();
-    if (lower === "debug" || lower === "info" || lower === "warn" || lower === "error") {
+    if (
+        lower === "debug" ||
+        lower === "info" ||
+        lower === "warn" ||
+        lower === "error"
+    ) {
         return lower;
     }
     return "info";
@@ -27,12 +39,35 @@ function stringifyValue(value: LogValue): string {
     return String(value);
 }
 
+function redactField(key: string, value: LogValue): LogValue {
+    if (value === null || value === undefined) return value;
+
+    if (SENSITIVE_KEY_RE.test(key)) {
+        return "[REDACTED]";
+    }
+
+    if (typeof value === "string") {
+        if (SENSITIVE_VALUE_RE.test(value)) {
+            return "[REDACTED]";
+        }
+
+        if (PROMPTLIKE_KEY_RE.test(key) && value.length > 0) {
+            return `[REDACTED_TEXT len=${value.length}]`;
+        }
+    }
+
+    return value;
+}
+
 function formatFields(fields?: LogFields): string {
     if (!fields) return "";
     const entries = Object.entries(fields);
     if (entries.length === 0) return "";
     return entries
-        .map(([key, value]) => `${key}=${stringifyValue(value)}`)
+        .map(
+            ([key, value]) =>
+                `${key}=${stringifyValue(redactField(key, value))}`,
+        )
         .join(" ");
 }
 

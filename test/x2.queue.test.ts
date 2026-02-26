@@ -203,6 +203,9 @@ describe("X2 Queue", () => {
         expect(terminal?.result).toBeString();
 
         const parsed = JSON.parse(terminal!.result!);
+        expect(parsed.schema_version).toBe("eq1_result.v1");
+        expect(parsed.request_hash).toBeString();
+        expect(parsed.request_hash.length).toBe(64);
         expect(parsed.type).toBe("classify");
         expect(parsed.output.action).toBe("auto");
         expect(store.getStats().completed).toBe(1);

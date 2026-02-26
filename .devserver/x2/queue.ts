@@ -12,6 +12,7 @@ import { Store, type Task, type TaskType } from "./store";
 import { computeBackoffDelay } from "../utils/retry";
 import type { Eq1Client } from "../eq1/llm-client";
 import { isEq1TaskType } from "../eq1/task-types";
+import { createHash } from "node:crypto";
 import type {
     OpenCodeServer,
     MessageWithParts,
@@ -31,6 +32,16 @@ export interface QueueOptions {
     retryBaseDelayMs?: number;
     retryMaxDelayMs?: number;
     now?: () => number;
+}
+
+function buildEq1RequestHash(task: Task): string {
+    return createHash("sha256")
+        .update(task.type)
+        .update("\n")
+        .update(task.source)
+        .update("\n")
+        .update(task.prompt)
+        .digest("hex");
 }
 
 export class Queue {
@@ -91,6 +102,8 @@ export class Queue {
 
                 const stored = JSON.stringify(
                     {
+                        schema_version: "eq1_result.v1",
+                        request_hash: buildEq1RequestHash(task),
                         type: result.type,
                         provider: result.provider,
                         model: result.model,
@@ -290,7 +303,9 @@ export class Queue {
     ): Task | null {
         const latest = this.store.getTask(task.id);
         const attempts = (latest?.attempts ?? task.attempts) + 1;
-        const shouldRetry = attempts <= this.maxRetries;
+        // Eq1 호출은 provider-level retry만 사용해 task-level retry 중첩을 방지한다.
+        const shouldRetry =
+            !isEq1TaskType(task.type) && attempts <= this.maxRetries;
         const message = error instanceof Error ? error.message : String(error);
         const now = this.now();
         const retryDelayMs = shouldRetry

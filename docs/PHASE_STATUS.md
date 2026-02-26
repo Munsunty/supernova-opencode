@@ -23,7 +23,7 @@
 |-------|------|------|------|-----------|
 | 1 | Dₚ 격리 + X_oc | done | 격리 환경 + wrapper 안정화 | 격리된 opencode serve 가동 + SDK wrapper |
 | 2 | X₂ | done | task queue 실행 루프 완성 | task 입력 시 X_oc 실행 후 결과 저장 |
-| 3 | Eq₁ | done | LLM client 구현 | W₄ 경로 LLM 호출 가능 |
+| 3 | Eq₁ | done | LLM client 구현 | W₄ 경로 호출 + 실패 경로 검증 + 결과 스키마 기록 |
 | 4 | X₃ + X₄ | planned | interaction + routing 통합 | 전체 주기 1회 완주 |
 | 5 | X₁ | planned | 통신 프로토콜 연결 | user → 주기 → report 전체 동작 |
 
@@ -54,12 +54,21 @@
 - 구현 완료:
   - provider adapter 연결 (cerebras 1순위, groq 2순위, openai-compatible 공통)
   - X₂ task schema 확장(`tasks.type`) 및 Eq₁ task 실행 경로 연결
-  - Eq₁ 실행 결과를 `tasks.result` JSON으로 저장
+  - Eq₁ 실행 결과를 `tasks.result` JSON으로 저장 (`schema_version=eq1_result.v1`, `request_hash`)
+  - Eq₁ 재시도 책임 분리: provider-level retry 사용, task-level retry 중첩 차단
+  - logging redaction 적용(키/토큰/프롬프트 계열 필드 마스킹)
   - worker enqueue 시 task type 지정 가능(`--type`)
 - 검증 완료:
   - live key 기준 `eq1:smoke` 성공 (`2026-02-26`, provider=`cerebras`, attempts=1)
+  - 실패 경로 검증 통과: timeout, 429, 5xx, invalid JSON
+  - retry fail-fast 검증 통과: 4xx는 재시도하지 않음
   - Phase 종료 직전 전체 `bun test` 통과
-- 종료 기준: W₄ 경로에서 LLM 호출 성공 + 결과 저장
+- 종료 기준:
+  - W₄ 경로에서 LLM 호출 성공 + 결과 저장
+  - 실패 경로 4종(timeout/429/5xx/invalid JSON) 테스트 통과
+  - Eq₁ retry 중첩 방지(provider/task 책임 분리) 적용
+  - `tasks.result` 스키마 버전/요청 해시 필드 기록
+  - 로그 redaction 정책 적용
 
 ### Phase 4
 

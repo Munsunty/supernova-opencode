@@ -21,8 +21,6 @@
 
 ## Backlog (Phase 4-5)
 
-- [ ] [P2][X₃] permission/question detector loop 구현
-- [ ] [P2][X₃] evaluator(score) + responder(자동/사용자 분기) 구현
 - [ ] [P2][X₄] summarizer/router 구현 및 report/new task 분기
 - [ ] [P2][X₁] Telegram 프로토콜 연결 및 end-to-end 검증
 
@@ -44,3 +42,7 @@
 - [x] [P1][Eq₁] X₂ queue에서 Eq₁ task type(`classify/evaluate/summarize/route`) 실행 연결
 - [x] [P1][Eq₁] W₄ 결과 JSON 저장 경로 연결(`tasks.result`)
 - [x] [P1][Eq₁] live key 기준 `eq1:smoke` 성공 검증(`2026-02-26`, provider=`cerebras`)
+- [x] [P1][Eq₁] 실패 경로 테스트 보강(timeout/429/5xx/invalid JSON, 4xx fail-fast)
+- [x] [P1][Eq₁] retry 책임 분리(provider-level 우선, task-level 중첩 차단)
+- [x] [P1][Eq₁] `tasks.result` 스키마 버전 + `request_hash` 저장
+- [x] [P1][Ops] logging redaction 적용 + 테스트 추가

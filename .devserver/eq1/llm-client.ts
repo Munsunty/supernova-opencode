@@ -47,6 +47,26 @@ function parseJsonObject(raw: string): Record<string, unknown> {
     return parsed;
 }
 
+function isRetriableProviderError(error: unknown): boolean {
+    const message =
+        error instanceof Error
+            ? error.message.toLowerCase()
+            : String(error).toLowerCase();
+
+    if (/\((429|408|5\d\d)\)/.test(message)) return true;
+    if (message.includes("rate limit")) return true;
+    if (message.includes("network")) return true;
+    if (message.includes("fetch failed")) return true;
+    if (message.includes("timeout")) return true;
+    if (message.includes("timed out")) return true;
+    if (message.includes("aborted")) return true;
+    if (message.includes("econnreset") || message.includes("econnrefused"))
+        return true;
+    if (message.includes("temporary")) return true;
+
+    return false;
+}
+
 export function buildEq1Messages(request: Eq1RunRequest): EqPromptMessage[] {
     const systemPrompt = TASK_SYSTEM_PROMPTS[request.type];
     const payload = {
@@ -78,7 +98,8 @@ export class Eq1Client {
 
     constructor(provider: EqProvider, options: Eq1ClientOptions = {}) {
         this.provider = provider;
-        this.retryAttempts = Math.max(1, options.retryAttempts ?? 2);
+        // Eq1는 task-level 재시도와 중첩을 피하기 위해 provider-level retry를 최소 기본값(1)으로 둔다.
+        this.retryAttempts = Math.max(1, options.retryAttempts ?? 1);
         this.retryBaseDelayMs = options.retryBaseDelayMs ?? 300;
         this.retryMaxDelayMs = options.retryMaxDelayMs ?? 2_000;
         this.timeoutMs = options.timeoutMs ?? 20_000;
@@ -104,6 +125,7 @@ export class Eq1Client {
                 attempts: this.retryAttempts,
                 baseDelayMs: this.retryBaseDelayMs,
                 maxDelayMs: this.retryMaxDelayMs,
+                shouldRetry: (error) => isRetriableProviderError(error),
                 onRetry: ({ error, attempt, maxAttempts, nextDelayMs }) => {
                     const message =
                         error instanceof Error ? error.message : String(error);
