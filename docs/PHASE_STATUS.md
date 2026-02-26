@@ -77,6 +77,7 @@
   - X₃ detector loop 1차 구현 완료 (`.devserver/x3/detector.ts`, `.devserver/x3/worker.ts`)
   - interaction queue 저장 경로 추가 (`.devserver/x2/store.ts`, `interactions` 테이블)
   - X₃ evaluator/responder 구현 완료 (`.devserver/x3/evaluator.ts`, `.devserver/x3/responder.ts`, `.devserver/x3/processor.ts`)
+  - W₄ 결과를 interaction queue에 구조화 저장 (`interactions.answer`, `schema_version=x3_interaction_result.v1`)
   - detector/processor 검증 테스트 추가/통과 (`test/x3.detector.test.ts`, `test/x3.processor.test.ts`)
 - 종료 기준: permission/question 분기 + 후속 route(report/new task) 동작
 

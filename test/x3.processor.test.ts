@@ -91,7 +91,13 @@ describe("X3 processor (evaluator + responder)", () => {
         expect(server.replyPermissionCalls).toBe(1);
         expect(server.replyQuestionCalls).toBe(0);
         expect(store.listInteractions({ status: "pending" }).length).toBe(0);
-        expect(store.listInteractions({ status: "answered" }).length).toBe(1);
+        const answered = store.listInteractions({ status: "answered" });
+        expect(answered.length).toBe(1);
+        const answerPayload = JSON.parse(answered[0]!.answer!);
+        expect(answerPayload.schema_version).toBe("x3_interaction_result.v1");
+        expect(answerPayload.source).toBe("w4");
+        expect(answerPayload.route).toBe("auto");
+        expect(answerPayload.evaluation.score).toBe(2);
         expect(store.listTasks({ type: "report" }).length).toBe(0);
         store.close();
     });
@@ -124,7 +130,13 @@ describe("X3 processor (evaluator + responder)", () => {
         expect(server.replyPermissionCalls).toBe(0);
         expect(server.replyQuestionCalls).toBe(0);
         expect(store.listTasks({ type: "report" }).length).toBe(1);
-        expect(store.listInteractions({ status: "answered" }).length).toBe(1);
+        const answered = store.listInteractions({ status: "answered" });
+        expect(answered.length).toBe(1);
+        const answerPayload = JSON.parse(answered[0]!.answer!);
+        expect(answerPayload.schema_version).toBe("x3_interaction_result.v1");
+        expect(answerPayload.source).toBe("w4");
+        expect(answerPayload.route).toBe("user");
+        expect(answerPayload.report_task_id).toBe(processed?.reportTask?.id);
         store.close();
     });
 
@@ -154,7 +166,13 @@ describe("X3 processor (evaluator + responder)", () => {
         expect(processed).toBeDefined();
         expect(processed?.route).toBe("auto");
         expect(server.replyPermissionCalls).toBe(1);
-        expect(store.listInteractions({ status: "rejected" }).length).toBe(1);
+        const rejected = store.listInteractions({ status: "rejected" });
+        expect(rejected.length).toBe(1);
+        const answerPayload = JSON.parse(rejected[0]!.answer!);
+        expect(answerPayload.schema_version).toBe("x3_interaction_result.v1");
+        expect(answerPayload.source).toBe("w4");
+        expect(answerPayload.route).toBe("auto");
+        expect(answerPayload.error).toContain("permission reply failed");
         store.close();
     });
 });

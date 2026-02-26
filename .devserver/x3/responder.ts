@@ -65,7 +65,8 @@ export class InteractionResponder {
         evaluation: InteractionEvaluation,
     ): Promise<ResponderResult> {
         const shouldAuto =
-            evaluation.route === "auto" && evaluation.score <= this.autoThreshold;
+            evaluation.route === "auto" &&
+            evaluation.score <= this.autoThreshold;
 
         if (!shouldAuto) {
             const reportTask = this.store.createTask(
@@ -76,9 +77,15 @@ export class InteractionResponder {
             const updated = this.store.updateInteraction(interaction.id, {
                 status: "answered",
                 answer: JSON.stringify({
+                    schema_version: "x3_interaction_result.v1",
+                    source: "w4",
                     route: "user",
-                    score: evaluation.score,
-                    reason: evaluation.reason,
+                    evaluation: {
+                        score: evaluation.score,
+                        reason: evaluation.reason,
+                        route: evaluation.route,
+                        raw: evaluation.raw,
+                    },
                     report_task_id: reportTask.id,
                 }),
                 answeredAt: Date.now(),
@@ -105,15 +112,23 @@ export class InteractionResponder {
                 );
             } else {
                 const answer = evaluation.reply ?? evaluation.reason;
-                await this.server.replyQuestion(interaction.requestId, [[answer]]);
+                await this.server.replyQuestion(interaction.requestId, [
+                    [answer],
+                ]);
             }
 
             const updated = this.store.updateInteraction(interaction.id, {
                 status: "answered",
                 answer: JSON.stringify({
+                    schema_version: "x3_interaction_result.v1",
+                    source: "w4",
                     route: "auto",
-                    score: evaluation.score,
-                    reason: evaluation.reason,
+                    evaluation: {
+                        score: evaluation.score,
+                        reason: evaluation.reason,
+                        route: evaluation.route,
+                        raw: evaluation.raw,
+                    },
                     reply: evaluation.reply,
                 }),
                 answeredAt: Date.now(),
@@ -129,11 +144,20 @@ export class InteractionResponder {
                 reportTask: null,
             };
         } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
+            const message =
+                error instanceof Error ? error.message : String(error);
             const updated = this.store.updateInteraction(interaction.id, {
                 status: "rejected",
                 answer: JSON.stringify({
+                    schema_version: "x3_interaction_result.v1",
+                    source: "w4",
                     route: "auto",
+                    evaluation: {
+                        score: evaluation.score,
+                        reason: evaluation.reason,
+                        route: evaluation.route,
+                        raw: evaluation.raw,
+                    },
                     error: message,
                 }),
                 answeredAt: Date.now(),
