@@ -1,0 +1,12 @@
+# 런타임 데이터 (격리 환경에서 자동 생성)
+data/
+cache/
+node_modules/
+bun.lock
+
+# 스크린샷
+screenshots/
+
+# 플러그인 자동 설치
+config/opencode/node_modules/
+config/opencode/bun.lock

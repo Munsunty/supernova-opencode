@@ -1,0 +1,43 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": [
+    "oh-my-opencode@latest"
+  ],
+  "instructions": [
+    "AGENTS.md",
+    "rules/*.md"
+  ],
+  "permission": {
+    "read": {
+      "*": "allow",
+      ".devserver/**": "deny"
+    },
+    "edit": {
+      "*": "allow",
+      ".devserver/**": "deny"
+    },
+    "glob": {
+      "*": "allow",
+      ".devserver/**": "deny"
+    },
+    "grep": {
+      "*": "allow",
+      ".devserver/**": "deny"
+    },
+    "list": {
+      "*": "allow",
+      ".devserver/**": "deny"
+    },
+    "bash": {
+      "*": "allow",
+      "*.devserver*": "deny"
+    }
+  },
+  "watcher": {
+    "ignore": [".devserver/**"]
+  },
+  "server": {
+    "port": 4996,
+    "hostname": "127.0.0.1"
+  }
+}
