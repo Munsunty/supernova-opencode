@@ -230,6 +230,27 @@ describe("X2 Queue", () => {
         store.close();
     });
 
+    test("report task completes without X_oc dispatch", async () => {
+        const store = createStore();
+        const server = new FakeServer();
+        const eq1Client = new FakeEq1Client();
+        const queue = new Queue(store, server as never, {
+            maxRetries: 0,
+            eq1Client: eq1Client as never,
+        });
+
+        queue.enqueue("report payload", "x4", "report");
+        const terminal = await queue.dispatchNext();
+
+        expect(terminal).toBeDefined();
+        expect(terminal?.status).toBe("completed");
+        expect(terminal?.type).toBe("report");
+        expect(terminal?.result).toBe("report payload");
+        expect(server.promptCalls).toBe(0);
+        expect(eq1Client.runCalls).toBe(0);
+        store.close();
+    });
+
     test("dispatchNext claims pending and sends promptAsync", async () => {
         const store = createStore();
         const server = new FakeServer();

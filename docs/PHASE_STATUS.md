@@ -25,7 +25,7 @@
 | 2 | X₂ | done | task queue 실행 루프 완성 | task 입력 시 X_oc 실행 후 결과 저장 |
 | 3 | Eq₁ | done | LLM client 구현 | W₄ 경로 호출 + 실패 경로 검증 + 결과 스키마 기록 |
 | 4 | X₃ + X₄ | in_progress | interaction + routing 통합 | 전체 주기 1회 완주 |
-| 5 | X₁ | planned | 통신 프로토콜 연결 | user → 주기 → report 전체 동작 |
+| 5 | X₁ | in_progress | 통신 프로토콜 연결 | user → 주기 → report 전체 동작 |
 
 ## Phase 상세
 
@@ -86,6 +86,10 @@
 ### Phase 5
 
 - 범위: X₁ 통신 프로토콜(현재 Telegram) 연결
+- 진행 현황:
+  - `report` task가 X_oc로 전달되지 않도록 queue consumer 분리 (`.devserver/x2/queue.ts`)
+  - report task는 즉시 completed 처리 후 reporter 경로로 전달
+  - 검증 테스트 추가/통과 (`test/x2.queue.test.ts`)
 - 종료 기준: user input부터 report 전달까지 end-to-end 완주
 
 ## 업데이트 절차

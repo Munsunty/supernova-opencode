@@ -83,6 +83,17 @@ export class Queue {
         const task = this.store.claimNextPending(this.now());
         if (!task) return null;
 
+        if (task.type === "report") {
+            // report는 X_oc 실행 대상이 아니라 전달 대상이므로 즉시 완료 처리한다.
+            return this.store.updateTask(task.id, {
+                status: "completed",
+                retryAt: null,
+                result: task.prompt,
+                error: null,
+                completedAt: this.now(),
+            });
+        }
+
         if (isEq1TaskType(task.type)) {
             try {
                 if (!this.eq1Client) {

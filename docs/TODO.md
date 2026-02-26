@@ -16,7 +16,7 @@
 
 ## Next (Phase 4-5)
 
-- [ ] [P2][X₁] report task 소비기(consumer) 구현 및 X₁ 전달 경로 연결
+- [ ] [P2][X₁] user input → task enqueue 인입 경로 구현(프로토콜 어댑터)
 
 ## Backlog (Phase 4-5)
 
@@ -48,3 +48,4 @@
 - [x] [P2][X₃] evaluator(score) + responder(자동/사용자 분기) 구현
 - [x] [P2][X₄] W₄ 결과를 interaction queue 저장 경로로 확장(`interactions.answer`)
 - [x] [P2][X₄] summarizer/router 구현 및 report/new task 분기
+- [x] [P2][X₁] report task 소비기(consumer) 구현 및 전달 경로 연결(`report` 즉시 완료)
