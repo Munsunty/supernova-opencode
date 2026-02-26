@@ -12,15 +12,14 @@
 
 ## In Progress
 
-- [ ] [P2][X₃] evaluator(score) + responder(자동/사용자 분기) 구현
+- [ ] [P2][X₄] W₄ 결과를 interaction queue 저장 경로로도 확장(X₃/X₄ 연동 대비)
 
 ## Next (Phase 4-5)
 
-- [ ] [P2][X₄] W₄ 결과를 interaction queue 저장 경로로도 확장(X₃/X₄ 연동 대비)
+- [ ] [P2][X₄] summarizer/router 구현 및 report/new task 분기
 
 ## Backlog (Phase 4-5)
 
-- [ ] [P2][X₄] summarizer/router 구현 및 report/new task 분기
 - [ ] [P2][X₁] Telegram 프로토콜 연결 및 end-to-end 검증
 
 ## Done
@@ -46,3 +45,4 @@
 - [x] [P1][Eq₁] `tasks.result` 스키마 버전 + `request_hash` 저장
 - [x] [P1][Ops] logging redaction 적용 + 테스트 추가
 - [x] [P2][X₃] permission/question detector loop 구현
+- [x] [P2][X₃] evaluator(score) + responder(자동/사용자 분기) 구현
