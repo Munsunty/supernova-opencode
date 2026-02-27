@@ -1,0 +1,32 @@
+FROM docker.io/oven/bun:1.3.10-debian
+
+ENV BUN_INSTALL_CACHE_DIR=/var/cache/bun \
+    XDG_CONFIG_HOME=/srv/opencode/config \
+    XDG_DATA_HOME=/srv/opencode/data \
+    XDG_CACHE_HOME=/srv/opencode/cache \
+    OPENCODE_CONFIG_DIR=/srv/opencode/config \
+    OPENCODE_CONFIG=/srv/opencode/config/opencode.json \
+    OPENCODE_PORT=4996
+
+WORKDIR /opt/opencode
+
+RUN printf '%s\n' \
+    '{' \
+    '  "name": "homsa-opencode-testbed",' \
+    '  "private": true,' \
+    '  "dependencies": {' \
+    '    "@opencode-ai/plugin": "1.2.11",' \
+    '    "oh-my-opencode": "3.8.5",' \
+    '    "opencode-ai": "1.2.11"' \
+    '  }' \
+    '}' > /opt/opencode/package.json \
+    && bun install \
+    && mkdir -p /srv/opencode/config /srv/opencode/data /srv/opencode/cache
+
+COPY entrypoint.sh /usr/local/bin/opencode-entrypoint
+RUN chmod +x /usr/local/bin/opencode-entrypoint
+
+EXPOSE 4996
+EXPOSE 51234
+
+ENTRYPOINT ["/usr/local/bin/opencode-entrypoint"]

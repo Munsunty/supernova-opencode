@@ -1,0 +1,27 @@
+services:
+    opencode:
+        image: homsa-opencode-testbed:latest
+        container_name: homsa-opencode-testbed
+        build:
+            context: .
+            dockerfile: dockerfile
+        environment:
+            OPENCODE_PORT: "4996"
+            OPENCODE_HOSTNAME: "0.0.0.0"
+            OPENCODE_DASHBOARD_ENABLED: "1"
+            OPENCODE_DASHBOARD_PORT: "51234"
+            OPENCODE_WORKSPACE: "/workspace/project"
+        ports:
+            - "4996:4996"
+            - "51234:51234"
+        volumes:
+            - homsa_opencode_config:/srv/opencode/config:Z
+            - homsa_opencode_data:/srv/opencode/data:Z
+            - homsa_opencode_cache:/srv/opencode/cache:Z
+            - ..:/workspace/project:Z
+        restart: unless-stopped
+
+volumes:
+    homsa_opencode_config:
+    homsa_opencode_data:
+    homsa_opencode_cache:

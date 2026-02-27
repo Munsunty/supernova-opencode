@@ -2,6 +2,8 @@
 data/
 cache/
 opencode.runtime.json
+opencode.json
+
 node_modules/
 bun.lock
 .env

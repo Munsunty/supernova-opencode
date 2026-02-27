@@ -11,18 +11,19 @@
     },
     "scripts": {
         "dev": ".devserver/dev-up.sh",
+        "dev:podman": "X_OC_USE_PODMAN=1 .devserver/dev-up.sh",
         "dashboard": "bunx oh-my-opencode-dashboard@latest",
         "dashboard:add": "bunx oh-my-opencode-dashboard@latest add --name opencode-supernova",
-        "toy:init": "bun run script/toy-bot-init.ts",
-        "toy:cmd": "bun run script/toy-bot-command.ts",
-        "toy:watch": "bun run script/toy-bot-watch.ts",
-        "xoc:prompt": "bun run script/xoc-prompt.ts",
-        "xoc:monitor": "bun run script/xoc-x4-monitor.ts",
-        "xoc:session": "bun run script/xoc-session-measure.ts",
-        "x2:worker": "bun run .devserver/x2/worker.ts",
-        "x2:once": "bun run .devserver/x2/worker.ts --once",
-        "x3:worker": "bun run .devserver/x3/worker.ts",
-        "x3:once": "bun run .devserver/x3/worker.ts --once",
-        "eq1:smoke": "cd .devserver && bun run eq1/smoke.ts"
+        "toy:init": "bun run .devserver/dev_code/script/toy-bot-init.ts",
+        "toy:cmd": "bun run .devserver/dev_code/script/toy-bot-command.ts",
+        "toy:watch": "bun run .devserver/dev_code/script/toy-bot-watch.ts",
+        "xoc:prompt": "bun run .devserver/dev_code/script/xoc-prompt.ts",
+        "xoc:monitor": "bun run .devserver/dev_code/script/xoc-x4-monitor.ts",
+        "xoc:session": "bun run .devserver/dev_code/script/xoc-session-measure.ts",
+        "x2:worker": "bun run .devserver/src/x2/worker.ts",
+        "x2:once": "bun run .devserver/src/x2/worker.ts --once",
+        "x3:worker": "bun run .devserver/src/x3/worker.ts",
+        "x3:once": "bun run .devserver/src/x3/worker.ts --once",
+        "eq1:smoke": "cd .devserver && bun run src/eq1/smoke.ts"
     }
 }

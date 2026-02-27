@@ -2,7 +2,7 @@
     "name": "opencode-supernova-devserver",
     "private": true,
     "scripts": {
-        "eq1:smoke": "bun run eq1/smoke.ts"
+        "eq1:smoke": "bun run src/eq1/smoke.ts"
     },
     "dependencies": {
         "@opencode-ai/plugin": "1.2.11",
