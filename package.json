@@ -11,7 +11,7 @@
     },
     "scripts": {
         "dev": ".devserver/dev-up.sh",
-        "dev:podman": "X_OC_USE_PODMAN=1 .devserver/dev-up.sh",
+        "dev:podman": ".devserver/dev-up.sh",
         "dashboard": "bunx oh-my-opencode-dashboard@latest",
         "dashboard:add": "bunx oh-my-opencode-dashboard@latest add --name opencode-supernova",
         "toy:init": "bun run .devserver/dev_code/script/toy-bot-init.ts",

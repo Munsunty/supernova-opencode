@@ -9,8 +9,9 @@ import { Database } from "bun:sqlite";
 import { randomUUIDv7 } from "bun";
 import { isEq1TaskType, type Eq1TaskType } from "../eq1/task-types";
 
-const DEFAULT_DB_PATH = new URL("../../data/state.db", import.meta.url)
-    .pathname;
+const DEFAULT_DB_PATH =
+    process.env.X2_DB_PATH ??
+    new URL("../../data/state.db", import.meta.url).pathname;
 
 export type TaskStatus = "pending" | "running" | "completed" | "failed";
 export type TaskType = "omo_request" | Eq1TaskType | "report";

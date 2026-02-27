@@ -10,7 +10,12 @@ services:
             OPENCODE_HOSTNAME: "0.0.0.0"
             OPENCODE_DASHBOARD_ENABLED: "1"
             OPENCODE_DASHBOARD_PORT: "51234"
+            OPENCODE_DASHBOARD_PROXY_ENABLED: "1"
+            OPENCODE_DASHBOARD_INTERNAL_PORT: "51235"
             OPENCODE_WORKSPACE: "/workspace/project"
+            OPENCODE_X2_ENABLED: "1"
+            OPENCODE_X2_WORKER_SCRIPT: "/opt/opencode/src/x2/worker.ts"
+            X2_DB_PATH: "/srv/opencode/data/state.db"
         ports:
             - "4996:4996"
             - "51234:51234"

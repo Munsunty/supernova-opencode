@@ -10,18 +10,13 @@ ENV BUN_INSTALL_CACHE_DIR=/var/cache/bun \
 
 WORKDIR /opt/opencode
 
-RUN printf '%s\n' \
-    '{' \
-    '  "name": "homsa-opencode-testbed",' \
-    '  "private": true,' \
-    '  "dependencies": {' \
-    '    "@opencode-ai/plugin": "1.2.11",' \
-    '    "oh-my-opencode": "3.8.5",' \
-    '    "opencode-ai": "1.2.11"' \
-    '  }' \
-    '}' > /opt/opencode/package.json \
-    && bun install \
+COPY package.json /opt/opencode/package.json
+COPY bun.lock /opt/opencode/bun.lock
+
+RUN bun install --frozen-lockfile \
     && mkdir -p /srv/opencode/config /srv/opencode/data /srv/opencode/cache
+
+COPY src /opt/opencode/src
 
 COPY entrypoint.sh /usr/local/bin/opencode-entrypoint
 RUN chmod +x /usr/local/bin/opencode-entrypoint

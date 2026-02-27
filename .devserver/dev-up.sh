@@ -1,14 +1,11 @@
 #!/bin/bash
-# OpenCode dev environment bootstrap
-# - local mode: permission sandbox + local opencode
-# - podman mode: containerized opencode + dashboard
+# OpenCode dev environment bootstrap (Podman-only)
+# - opencode + dashboard + X2 worker run inside Podman
 
 set -euo pipefail
 
 DEVSERVER_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$DEVSERVER_DIR/.." && pwd)"
-OPENCODE_BIN="$DEVSERVER_DIR/node_modules/.bin/opencode"
-RUNTIME_CONFIG="$DEVSERVER_DIR/opencode.json"
 PODMAN_DOCKERFILE="$DEVSERVER_DIR/dockerfile"
 
 export XDG_CONFIG_HOME="$DEVSERVER_DIR/config"
@@ -24,10 +21,10 @@ if [ -f "$DEVSERVER_DIR/.env" ]; then
   set +a
 fi
 
-echo "=== OpenCode dev-up ==="
+echo "=== OpenCode dev-up (podman-only) ==="
 echo "PROJECT_DIR:   $PROJECT_DIR"
 echo "DEVSERVER_DIR: $DEVSERVER_DIR"
-echo "======================="
+echo "====================================="
 
 cleanup_port() {
   local port=$1 pid
@@ -39,94 +36,57 @@ cleanup_port() {
   fi
 }
 
-cleanup_background() {
-  local pids=()
-  if [ -n "${DASHBOARD_PID:-}" ]; then
-    pids+=("$DASHBOARD_PID")
-  fi
-  if [ -n "${X2_WORKER_PID:-}" ]; then
-    pids+=("$X2_WORKER_PID")
-  fi
-  if [ "${#pids[@]}" -gt 0 ]; then
-    kill "${pids[@]}" 2>/dev/null || true
-  fi
-}
-
-trap cleanup_background EXIT INT TERM
+if ! command -v podman >/dev/null 2>&1; then
+  echo "ERROR: podman command not found"
+  exit 1
+fi
+if [ ! -f "$PODMAN_DOCKERFILE" ]; then
+  echo "ERROR: podman dockerfile not found: $PODMAN_DOCKERFILE"
+  exit 1
+fi
 
 cleanup_port 4996
 cleanup_port 51234
 
-# X2 worker is local in both modes.
-bun run "$DEVSERVER_DIR/src/x2/worker.ts" &
-X2_WORKER_PID=$!
-echo "X2 worker started (pid: $X2_WORKER_PID)"
-
-USE_PODMAN="${X_OC_USE_PODMAN:-0}"
-if [ "$USE_PODMAN" = "1" ]; then
-  if ! command -v podman >/dev/null 2>&1; then
-    echo "ERROR: podman command not found"
-    exit 1
-  fi
-  if [ ! -f "$PODMAN_DOCKERFILE" ]; then
-    echo "ERROR: podman dockerfile not found: $PODMAN_DOCKERFILE"
-    exit 1
-  fi
-
-  IMAGE_NAME="${X_OC_PODMAN_IMAGE_NAME:-homsa-opencode-testbed:latest}"
-  CONTAINER_NAME="${X_OC_PODMAN_CONTAINER_NAME:-homsa-opencode-testbed}"
-  HOST_PORT="${X_OC_PODMAN_HOST_PORT:-4996}"
-  DASHBOARD_HOST_PORT="${X_OC_PODMAN_DASHBOARD_HOST_PORT:-51234}"
-  MOUNT_LABEL_SUFFIX="${X_OC_PODMAN_MOUNT_LABEL_SUFFIX:-Z}"
-  if [ -n "$MOUNT_LABEL_SUFFIX" ]; then
-    MOUNT_LABEL_SUFFIX=":$MOUNT_LABEL_SUFFIX"
-  fi
-
-  podman build -t "$IMAGE_NAME" -f "$PODMAN_DOCKERFILE" "$DEVSERVER_DIR"
-  podman rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
-
-  PODMAN_RUN_ARGS=(
-    --rm
-    -it
-    --name "$CONTAINER_NAME"
-    -p "$HOST_PORT:4996"
-    -p "$DASHBOARD_HOST_PORT:51234"
-    -e OPENCODE_PORT=4996
-    -e OPENCODE_HOSTNAME=0.0.0.0
-    -e OPENCODE_WORKSPACE=/workspace/project
-    -e OPENCODE_DASHBOARD_ENABLED=1
-    -e OPENCODE_DASHBOARD_PORT=51234
-    -v "homsa_opencode_config:/srv/opencode/config$MOUNT_LABEL_SUFFIX"
-    -v "homsa_opencode_data:/srv/opencode/data$MOUNT_LABEL_SUFFIX"
-    -v "homsa_opencode_cache:/srv/opencode/cache$MOUNT_LABEL_SUFFIX"
-    -v "$PROJECT_DIR:/workspace/project$MOUNT_LABEL_SUFFIX"
-  )
-  if [ -n "${OPENCODE_SERVER_PASSWORD:-}" ]; then
-    PODMAN_RUN_ARGS+=(-e "OPENCODE_SERVER_PASSWORD=$OPENCODE_SERVER_PASSWORD")
-  fi
-
-  echo "SANDBOX:       podman (enabled)"
-  podman run "${PODMAN_RUN_ARGS[@]}" "$IMAGE_NAME"
-  exit $?
+IMAGE_NAME="${X_OC_PODMAN_IMAGE_NAME:-homsa-opencode-testbed:latest}"
+CONTAINER_NAME="${X_OC_PODMAN_CONTAINER_NAME:-homsa-opencode-testbed}"
+HOST_PORT="${X_OC_PODMAN_HOST_PORT:-4996}"
+DASHBOARD_HOST_PORT="${X_OC_PODMAN_DASHBOARD_HOST_PORT:-51234}"
+MOUNT_LABEL_SUFFIX="${X_OC_PODMAN_MOUNT_LABEL_SUFFIX:-Z}"
+if [ -n "$MOUNT_LABEL_SUFFIX" ]; then
+  MOUNT_LABEL_SUFFIX=":$MOUNT_LABEL_SUFFIX"
 fi
 
-# Local dashboard (podman mode runs dashboard inside container).
-bunx oh-my-opencode-dashboard@latest --project "$PROJECT_DIR" &
-DASHBOARD_PID=$!
-echo "Dashboard started (pid: $DASHBOARD_PID, port: 51234)"
+podman build -t "$IMAGE_NAME" -f "$PODMAN_DOCKERFILE" "$DEVSERVER_DIR"
+podman rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
 
-if [ ! -x "$OPENCODE_BIN" ]; then
-  echo "ERROR: opencode binary not found: $OPENCODE_BIN"
-  exit 1
+PODMAN_RUN_ARGS=(
+  --rm
+  -it
+  --name "$CONTAINER_NAME"
+  -p "$HOST_PORT:4996"
+  -p "$DASHBOARD_HOST_PORT:51234"
+  -e OPENCODE_PORT=4996
+  -e OPENCODE_HOSTNAME=0.0.0.0
+  -e OPENCODE_WORKSPACE=/workspace/project
+  -e OPENCODE_DASHBOARD_ENABLED=1
+  -e OPENCODE_DASHBOARD_PORT=51234
+  -e OPENCODE_DASHBOARD_PROXY_ENABLED=1
+  -e OPENCODE_DASHBOARD_INTERNAL_PORT=51235
+  -e OPENCODE_X2_ENABLED=1
+  -e OPENCODE_X2_WORKER_SCRIPT=/opt/opencode/src/x2/worker.ts
+  -e X2_DB_PATH=/srv/opencode/data/state.db
+  -v "homsa_opencode_config:/srv/opencode/config$MOUNT_LABEL_SUFFIX"
+  -v "homsa_opencode_data:/srv/opencode/data$MOUNT_LABEL_SUFFIX"
+  -v "homsa_opencode_cache:/srv/opencode/cache$MOUNT_LABEL_SUFFIX"
+  -v "$PROJECT_DIR:/workspace/project$MOUNT_LABEL_SUFFIX"
+)
+if [ -f "$DEVSERVER_DIR/.env" ]; then
+  PODMAN_RUN_ARGS+=(--env-file "$DEVSERVER_DIR/.env")
+fi
+if [ -n "${OPENCODE_SERVER_PASSWORD:-}" ]; then
+  PODMAN_RUN_ARGS+=(-e "OPENCODE_SERVER_PASSWORD=$OPENCODE_SERVER_PASSWORD")
 fi
 
-bun run "$DEVSERVER_DIR/src/scripts/generate-opencode-config.ts" \
-  --project-dir "$PROJECT_DIR" \
-  --template "$DEVSERVER_DIR/opencode.json" \
-  --out "$RUNTIME_CONFIG"
-
-export OPENCODE_CONFIG="$RUNTIME_CONFIG"
-echo "CONFIG:        $OPENCODE_CONFIG"
-echo "SANDBOX:       permission sandbox (bwrap disabled)"
-
-"$OPENCODE_BIN" serve --port 4996
+echo "SANDBOX:       podman (enabled)"
+podman run "${PODMAN_RUN_ARGS[@]}" "$IMAGE_NAME"
