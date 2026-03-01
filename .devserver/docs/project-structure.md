@@ -1,6 +1,6 @@
 # 프로젝트 디렉토리 구조 (Phase 3 완료 기준)
 
-*Last Updated: 2026-02-26*  
+*Last Updated: 2026-02-28*  
 *Source of truth: repository tree + git history (`7b757e4`, `bcea588`, `23f4503`, `011c25c`)*
 
 ```
@@ -13,6 +13,8 @@ opencode-supernova/
 └── .devserver/                        ← Dₚ 패키지 루트 (격리 환경)
     ├── package.json                   ← devserver 전용 의존성(opencode-ai, OmO, SDK)
     ├── dev-up.sh                      ← 격리 실행 엔트리 (XDG env 설정 + 서버 기동)
+    ├── dev-doctor.sh                  ← Podman 사전 진단 스크립트
+    ├── dev-smoke.sh                   ← 기동/ready/정리 스모크 검증 스크립트
     ├── opencode.json                  ← OpenCode 메인 설정
     ├── oh-my-opencode.jsonc           ← OmO 설정
     ├── opencode-server-wrapper.ts     ← X_oc wrapper (W₂/W₃ + L'_wrapper)
@@ -51,6 +53,7 @@ opencode-supernova/
     ├── docs/
     │   ├── api.md
     │   ├── isolation.md
+    │   ├── podman-troubleshooting.md
     │   └── project-structure.md
     │
     ├── config/opencode/               ← XDG_CONFIG_HOME
