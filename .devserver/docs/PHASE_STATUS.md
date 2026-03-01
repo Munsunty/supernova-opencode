@@ -1,6 +1,6 @@
 # Phase Status Board
 
-*Last Updated: 2026-02-28*
+*Last Updated: 2026-03-02*
 
 ## 목적
 
@@ -24,17 +24,19 @@
 | 1 | Dₚ 격리 + X_oc | done | 격리 환경 + wrapper 안정화 | 격리된 opencode serve 가동 + SDK wrapper |
 | 2 | X₂ | done | task queue 실행 루프 완성 | task 입력 시 X_oc 실행 후 결과 저장 |
 | 3 | Eq₁ | done | LLM client 구현 | W₄ 경로 호출 + 실패 경로 검증 + 결과 스키마 기록 |
-| 4 | X₃ + X₄ | blocked | interaction + routing 통합 | 전체 주기 1회 완주 |
-| 5 | X₁ | blocked | 통신 프로토콜 연결 | user → 주기 → report 전체 동작 |
+| 4 | X₃ + X₄ | planned | interaction + routing 통합 | 전체 주기 1회 완주 |
+| 5 | X₁ | planned | 통신 프로토콜 연결 | user → 주기 → report 전체 동작 |
 
-## 현재 차단 요인 (2026-02-28)
+## 현재 차단 요인 (2026-03-02)
 
-- 인프라 안정화 스프린트 진행 중: Podman runtime/dev-up 기동 신뢰성 확보를 우선 수행
-- Feature Phase(4/5) 구현은 `temp_TODO.md`의 Podman 항목이 안정화될 때까지 일시 중지
-- 차단 해제 기준:
-  - `bun run dev:doctor` 통과
-  - `bun run dev:smoke` 통과
-  - dev-up startup readiness 실패 케이스 재현/원인 문서화 완료
+- 인프라 차단(temporary) 해제:
+  - `bun run dev:doctor` PASS
+  - `bun run dev:smoke` PASS (opencode/dashboard readiness 확인)
+- Feature Phase(4/5)는 `blocked(infra)` 상태 해제 후 `planned`로 복귀
+- 후속 운영 고도화(P2)는 별도 추적:
+  - readiness 이벤트 `metrics_events` 저장
+  - smoke 테스트 CI 분리
+  - `dev:doctor` gvproxy 경고 레벨 정책 정리
 
 ## Phase 상세
 

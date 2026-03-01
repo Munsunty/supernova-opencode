@@ -1,6 +1,6 @@
 # temp_TODO.md
 
-*Last Updated: 2026-02-28*
+*Last Updated: 2026-03-02*
 
 ## 목적
 
@@ -16,11 +16,10 @@
 
 ## In Progress
 
-- [ ] [P1][Security] `.devserver/.env`에 `OPENCODE_SERVER_PASSWORD` 설정 후 `bun run dev:doctor` 재검증
+- 없음 (2026-03-02 smoke PASS, close-ready)
 
 ## Next
 
-- [ ] [P1][Phase] 인프라 차단 해제 판단(`doctor/smoke` 결과 기반) + 문서 상태 동기화
 - [ ] [P2][Ops] readiness 이벤트를 metrics_events에 저장(가시성 강화)
 
 ## Backlog
@@ -35,7 +34,7 @@
 - [x] [P0][Startup] 컨테이너 기동 후 readiness gate 추가 (opencode health + dashboard proxy + worker)
 - [x] [P0][Recovery] readiness 실패 시 자동 teardown + 원인 요약 로그 출력
 - [x] [P0][Ports] 포트 충돌 처리 개선 (기본 fail-fast, 선택적 force-kill)
-- [x] [P0][Env] 필수/권장 env 검증 경고 구조화 (`OPENCODE_SERVER_PASSWORD`, provider key(optional), .env)
+- [x] [P0][Env] 필수/권장 env 검증 경고 구조화 (server auth env, provider key(optional), .env)
 - [x] [P0][Entrypoint] 하드코딩 축소 (plugin/health path/readiness host/dashboard 실행 값 env 오버라이드)
 - [x] [P0][Entrypoint] proxy inline 코드 분리 (`src/scripts/dashboard-proxy.ts`)
 - [x] [P0][Config] workspace 경로 기반 runtime permission config 자동생성 연결
@@ -48,6 +47,14 @@
 - [x] [P1][Doctor] `dev:doctor` 최신화 (.env 로드 + provider key 체크 optional 기본 비활성)
 - [x] [P1][Tests] `.devserver/dev_code/test` 전체 통과 (77 pass)
 - [x] [P2][Ops] dev-up/entrypoint 주요 env 변수 표 정리 (포트 분리/노출 정책 포함)
+- [x] [P1][Auth] 컨테이너 시작 시 auth seed(`.devserver/opencode/auth.json`) 자동 동기화 추가
+- [x] [P1][OmO] `.devserver/oh-my-opencode.jsonc`를 runtime config dir로 자동 동기화 추가
+- [x] [P1][Workspace] `podman run -w /workspace/project`로 기본 working dir 고정
+- [x] [P1][Dashboard] dashboard project auto-add 연결 (SQLite project list 초기화 대응)
+- [x] [P1][Mount] `.devserver` 경로 named volume 마스킹 + seed 파일 read-only 개별 마운트 적용
+- [x] [P1][Security] `.devserver/.gitignore`에 `opencode/auth*.json` 추가 (자격증명 커밋 방지)
+- [x] [P1][Ops] `.devserver` 마스킹(named volume) + dashboard auto-add 회귀 확인 (`bun run dev:smoke` PASS)
+- [x] [P1][Phase] 인프라 차단 해제 판단 완료(`doctor/smoke` PASS) + 문서 상태 동기화
 
 ## Run Log
 
@@ -63,3 +70,9 @@
 - 2026-02-28: doctor 최신화 - .env load + provider key check optional(기본 off)
 - 2026-02-28: test 안정화 - wrapper/prompt fallback + monitor log parser 보정 후 77 tests PASS
 - 2026-02-28: regression 확인 - doctor 최신화 이후 dev:smoke 재실행 PASS
+- 2026-03-01: auth/OmO seed sync 추가 - 컨테이너 시작 시 `.devserver` 기반 auth/oh-my-opencode 설정 자동 반영
+- 2026-03-01: dashboard 개선 - project auto-add 연결로 "프로젝트 열기" 빈 목록 이슈 완화
+- 2026-03-01: workspace 고정 - `-w /workspace/project` 적용으로 opencode 기본 working dir 정렬
+- 2026-03-02: `.devserver` 마운트 정책 전환 - named volume 마스킹 + seed 파일 별도 read-only 마운트 적용
+- 2026-03-02: 보안 보강 - `.devserver/.gitignore`에 `opencode/auth*.json` 추가
+- 2026-03-02: `bun run dev:smoke` PASS - doctor PASS + readiness(opencode/dashboard) 확인, temp TODO close-ready
