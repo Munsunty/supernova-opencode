@@ -1,94 +1,114 @@
 # XDG + Permission 격리 아키텍처
 
-*Last Updated: 2026-02-26*  
-*Source of truth: `.devserver/dev-up.sh`, runtime paths, git history*
+*Last Updated: 2026-03-02*  
+*Source of truth: `.devserver/dev-up.sh`, `.devserver/entrypoint.sh`, `.devserver/dockerfile`, runtime logs*
 
 ## 개요
 
-이 프로젝트는 XDG Base Directory 표준 + runtime permission allowlist로 OpenCode/OmO 런타임을 프로젝트 단위로 격리한다.  
-핵심 목표는 **"프로젝트 경로만 주면 독립된 Dₚ가 기동"**이며, Phase 1~3 구현은 이 가정을 유지한다.
+이 프로젝트는 Podman 기반으로 OpenCode/OmO 런타임을 프로젝트 단위로 격리한다.  
+핵심 목표는 **"프로젝트 경로만 주면 독립된 Dₚ가 재현 가능하게 기동"**이며, 최근 변경으로 `.devserver` 오염 방지(마스킹)까지 기본 정책으로 포함한다.
 
 ## 격리 메커니즘
 
+### 경로/스토리지 매핑
+
 ```
-글로벌 기본 경로                  프로젝트 로컬 격리 경로
-─────────────────────────────    ─────────────────────────────────────
-~/.config/opencode/         →    .devserver/config/opencode/
-~/.local/share/opencode/    →    .devserver/data/opencode/
-~/.cache/opencode/          →    .devserver/cache/opencode/
-opencode.json               →    .devserver/opencode.json
-.opencode/*                 →    .devserver/oh-my-opencode.jsonc
+글로벌 기본 경로                  Podman 런타임 경로                     저장 백엔드
+─────────────────────────────    ────────────────────────────────────    ───────────────────────────────
+~/.config/opencode/         →    /srv/opencode/config                  → named volume (VOLUME_CONFIG)
+~/.local/share/opencode/    →    /srv/opencode/data                    → named volume (VOLUME_DATA)
+~/.cache/opencode/          →    /srv/opencode/cache                   → named volume (VOLUME_CACHE)
+opencode.json               →    /srv/opencode/config/opencode.json    → 시작 시 생성 (template+generator)
+oh-my-opencode config       →    /srv/opencode/config/oh-my-opencode.jsonc
+                               (seed import)                           → `.devserver/oh-my-opencode.jsonc` read-only seed
+auth.json                   →    /srv/opencode/data/opencode/auth.json
+                               (seed import)                           → `.devserver/opencode/auth.json` read-only seed
 ```
 
-`dev-up.sh`는 아래 5개 환경변수를 강제로 설정해 참조 경로를 `.devserver/`로 수렴시킨다.
+### 워크스페이스 마운트 정책
 
-또한 시작 시점에 `.devserver/scripts/generate-opencode-config.ts`를 실행해
-`opencode.runtime.json`을 생성하고, 현재 프로젝트 절대 경로를 permission allowlist에 주입한다.
+- 프로젝트 루트는 `/workspace/project`로 bind mount한다.
+- 컨테이너 기본 작업 경로는 `-w /workspace/project`로 고정한다.
+- 기본값 `X_OC_PODMAN_EXCLUDE_DEVSERVER=1`에서 `/workspace/project/.devserver`는 named volume으로 마스킹된다.
+  - 목적: 컨테이너 내부 `.devserver` 쓰기가 호스트 `.devserver`에 반영되지 않게 차단
+  - 참고: 디렉터리 엔트리(`.devserver`) 자체는 루트 마운트 구조상 보일 수 있다.
 
 ## Runtime Permission 샌드박스
 
-- 생성 파일: `.devserver/opencode.runtime.json`
-- 기준 경로: `dev-up.sh` 실행 시 계산한 `PROJECT_DIR` (`pwd -P` 기반)
-- 정책: `external_directory`는 deny-by-default, `PROJECT_DIR/**`만 allow
-- `read/edit/glob/grep/list`도 `PROJECT_DIR/**`만 allow
-- `bash`는 기본 `ask` (명령 문자열 패턴 한계 때문에 보수적으로 설정)
-- `.devserver/**`는 별도 deny 유지
+- 생성 파일: `/srv/opencode/config/opencode.json` (컨테이너 내부)
+- 기준 경로: `/workspace/project` (entrypoint에서 generator 실행 시 주입)
+- 정책:
+  - `external_directory` deny-by-default, `/workspace/project/**`만 allow
+  - `read/edit/glob/grep/list`도 `/workspace/project/**`만 allow
+  - `/workspace/project/.devserver/**`는 별도 deny
+  - `bash`는 기본 `ask`
+- 템플릿/생성기:
+  - 템플릿: `/opt/opencode/opencode.template.json` (`.devserver/opencode.json` 기반)
+  - 생성기: `/opt/opencode/src/scripts/generate-opencode-config.ts`
 
 ## 선택 OS 샌드박스 (Linux only)
 
 - `X_OC_USE_BWRAP=1`일 때 Linux + bwrap 환경에서만 활성화
-- 미활성/미지원 플랫폼(macOS/Windows)에서는 permission sandbox만 적용
+- macOS/Windows는 permission sandbox + Podman 격리 정책으로 운영
 
-## 환경변수
+## 주요 환경변수
 
-| 환경변수 | 격리 값 | 설명 |
-|----------|---------|------|
-| `XDG_CONFIG_HOME` | `.devserver/config` | OpenCode/플러그인 런타임 설정 |
-| `XDG_DATA_HOME` | `.devserver/data` | auth, DB, 로그, 세션 스토리지 |
-| `XDG_CACHE_HOME` | `.devserver/cache` | 캐시/임시 데이터 |
-| `OPENCODE_CONFIG` | `.devserver/opencode.runtime.json` | 시작 시 생성된 runtime config 지정 |
-| `OPENCODE_CONFIG_DIR` | `.devserver/` | OmO 포함 보조 설정 파일 루트 |
+### 오케스트레이션(`dev-up.sh`)
 
-### 선택 환경변수
+| 환경변수 | 기본값 | 설명 |
+|----------|--------|------|
+| `X_OC_PODMAN_EXCLUDE_DEVSERVER` | `1` | `/workspace/project/.devserver` 마스킹 활성화 |
+| `X_OC_PODMAN_DEVSERVER_MASK_VOLUME` | `${VOLUME_PREFIX}_devserver_mask` | `.devserver` 마스크용 named volume |
+| `X_OC_PODMAN_AUTH_IMPORT_MODE` | `always` | auth seed import 모드(`always/if-missing/off`) |
+| `X_OC_PODMAN_OMO_CONFIG_IMPORT_MODE` | `always` | OmO config seed import 모드(`always/if-missing/off`) |
+| `X_OC_PODMAN_FORCE_KILL_PORTS` | `0` | 포트 충돌 시 자동 kill 여부 |
 
-| 환경변수 | 용도 |
-|----------|------|
-| `OPENCODE_CONFIG_CONTENT` | 인라인 설정 주입(최종 오버라이드) |
-| `OPENCODE_SERVER_PASSWORD` | 서버 접근 보호 |
+### 런타임(`dockerfile`/`entrypoint.sh`)
+
+| 환경변수 | 런타임 값 | 설명 |
+|----------|-----------|------|
+| `XDG_CONFIG_HOME` | `/srv/opencode/config` | OpenCode/OmO 설정 |
+| `XDG_DATA_HOME` | `/srv/opencode/data` | auth/DB/로그/스토리지 |
+| `XDG_CACHE_HOME` | `/srv/opencode/cache` | 캐시/임시 데이터 |
+| `OPENCODE_CONFIG_DIR` | `/srv/opencode/config` | OmO 포함 보조 설정 루트 |
+| `OPENCODE_CONFIG` | `/srv/opencode/config/opencode.json` | runtime permission config |
+| `OPENCODE_SERVER_PASSWORD` | unset(default) | 설정 시 서버 접근 보호 |
 
 ## 격리 범위
 
 ### 격리되는 항목
 
-- **설정 계층**: `opencode.json`, `oh-my-opencode.jsonc`
-- **OpenCode 런타임 데이터**: `.devserver/data/opencode/**`
-  - `auth.json`
-  - `opencode.db`
-  - `log/`, `storage/`
-- **시스템 상태 데이터(Dₚ₁)**: `.devserver/data/state.db`
-- **플러그인/캐시**: `.devserver/config/opencode/**`, `.devserver/cache/opencode/**`
-- **서버 실행 바이너리(로컬 설치분)**: `.devserver/node_modules/.bin/opencode`
-- **런타임 권한 규칙(opencode.runtime.json)**: 프로젝트 경로 allowlist
+- OpenCode/OmO 런타임 설정/데이터/캐시 (`/srv/opencode/{config,data,cache}` named volumes)
+- runtime auth 파일 (`/srv/opencode/data/opencode/auth.json`)
+- runtime config (`/srv/opencode/config/opencode.json`, `/srv/opencode/config/oh-my-opencode.jsonc`)
+- 워크스페이스 내 `.devserver` 쓰기 경로(마스크 volume로 분리)
+
+### 부분 공유 항목
+
+- `/workspace/project` 소스 트리 전체(코드 변경 반영 목적)
+- seed 파일 2종(`auth.json`, `oh-my-opencode.jsonc`)은 read-only mount 후 런타임 경로로 동기화
 
 ### 격리되지 않는 항목
 
 - 시스템 bun/node/git 실행파일 자체
 - OS 전역 네트워크 자원(기본 설정)
 - 호스트 파일시스템 자체 (Linux bwrap 미사용 시)
-- `dev-up.sh`에서 별도로 띄우는 대시보드/X₂ 워커 프로세스
+- `dev-up.sh`에서 띄우는 대시보드/X₂ 워커 프로세스의 네트워크 부하 자체
 
-## Phase 3까지 검증된 영향
+## 최근 검증 (2026-03-02)
 
-- Phase 2(X₂): task queue 실행 결과가 `.devserver/data/state.db`에 저장됨
-- Phase 3(Eq₁): LLM 호출 결과(`tasks.result`, `schema_version`, `request_hash`)가 동일 격리 DB에 누적됨
-- 따라서 실행/판단 이력이 프로젝트별 DB에 독립 저장됨(글로벌 OpenCode 데이터와 분리)
+- `bun run dev:doctor` PASS
+- `bun run dev:smoke` PASS
+  - opencode readiness PASS
+  - dashboard readiness PASS
+- `.devserver` 마스킹 적용 시 컨테이너 내부 `.devserver` 목록이 host 원본과 분리됨 확인
 
 ## 멀티 프로젝트 동시 구동
 
-```
-/project-a/.devserver/data/opencode/opencode.db  ← Project A
-/project-b/.devserver/data/opencode/opencode.db  ← Project B
-/project-c/.devserver/data/opencode/opencode.db  ← Project C
-```
+프로젝트별 `project-scope + project-hash` 기반 volume prefix를 사용한다.
 
-프로젝트별 `.devserver/`를 독립적으로 유지하고 포트만 분리하면 동시 실행 가능하다.
+예시:
+- `homsa_opencode_<scopeA>_<hashA>_config/data/cache/devserver_mask`
+- `homsa_opencode_<scopeB>_<hashB>_config/data/cache/devserver_mask`
+
+따라서 포트만 분리하면 프로젝트 간 런타임 상태 충돌 없이 동시 구동 가능하다.
