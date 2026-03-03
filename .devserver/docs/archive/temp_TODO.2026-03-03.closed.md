@@ -1,3 +1,8 @@
+# temp_TODO.md (Archived)
+
+Status: CLOSED (2026-03-03)
+Close reason: Podman 안정화 스프린트(P0/P1) 완료 및 smoke PASS로 close-ready 충족
+
 # temp_TODO.md
 
 *Last Updated: 2026-03-02*

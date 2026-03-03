@@ -1,6 +1,11 @@
 import { createLogger } from "../utils/logging";
 import type { Interaction, Store, Task } from "../x2/store";
 import type { InteractionEvaluation } from "./evaluator";
+import {
+    type AutoReplyPolicy,
+    decideAutoReply,
+    DEFAULT_AUTO_REPLY_POLICY,
+} from "./policy";
 
 const logger = createLogger("X3.Responder");
 
@@ -63,17 +68,20 @@ function buildReportPrompt(
 export class InteractionResponder {
     private store: Store;
     private server: InteractionServer;
-    private autoThreshold: number;
+    private policy: AutoReplyPolicy;
     private x4Router: X4Router | null;
 
     constructor(
         store: Store,
         server: InteractionServer,
-        options: { autoThreshold?: number; x4Router?: X4Router | null } = {},
+        options: {
+            policy?: AutoReplyPolicy;
+            x4Router?: X4Router | null;
+        } = {},
     ) {
         this.store = store;
         this.server = server;
-        this.autoThreshold = options.autoThreshold ?? 6;
+        this.policy = options.policy ?? DEFAULT_AUTO_REPLY_POLICY;
         this.x4Router = options.x4Router ?? null;
     }
 
@@ -81,9 +89,13 @@ export class InteractionResponder {
         interaction: Interaction,
         evaluation: InteractionEvaluation,
     ): Promise<ResponderResult> {
-        const shouldAuto =
-            evaluation.route === "auto" &&
-            evaluation.score <= this.autoThreshold;
+        const decision = decideAutoReply({
+            score: evaluation.score,
+            route: evaluation.route,
+            policy: this.policy,
+        });
+        const shouldAuto = decision.decision === "auto";
+        const from = interaction.status;
 
         if (!shouldAuto) {
             const routed = this.x4Router
@@ -123,9 +135,29 @@ export class InteractionResponder {
             logger.info("interaction_routed_user", {
                 interaction: interaction.id.slice(0, 8),
                 requestId: interaction.requestId,
+                auto_reply_strategy: this.policy.auto_reply_strategy,
                 routeAction: routed.decision.action,
                 reportTask: reportTask ? reportTask.id.slice(0, 8) : null,
                 score: evaluation.score,
+            });
+            this.store.appendMetricEvent({
+                eventType: "interaction_state_transition",
+                interactionId: interaction.id,
+                traceId: interaction.id,
+                from,
+                to: "answered",
+                reason: "interaction_escalated",
+                status: "answered",
+                source: "x3_worker",
+                backlog: this.store.getInteractionStats().pending,
+                payload: JSON.stringify({
+                    source: "x3_responder",
+                    route: routed.decision.action,
+                    score: evaluation.score,
+                    reason: evaluation.reason,
+                    reportTaskId: reportTask?.id ?? null,
+                    reportHash: routed.decision.request_hash ?? null,
+                }),
             });
             return {
                 interaction: updated,
@@ -167,7 +199,28 @@ export class InteractionResponder {
             logger.info("interaction_replied_auto", {
                 interaction: interaction.id.slice(0, 8),
                 requestId: interaction.requestId,
+                auto_reply_strategy: this.policy.auto_reply_strategy,
+                auto_reply_decision: decision.decision,
+                route_factor: decision.routeFactor,
+                score_factor: decision.scoreFactor,
                 score: evaluation.score,
+            });
+            this.store.appendMetricEvent({
+                eventType: "interaction_state_transition",
+                interactionId: interaction.id,
+                traceId: interaction.id,
+                from,
+                to: "answered",
+                reason: "interaction_auto_replied",
+                status: "answered",
+                source: "x3_worker",
+                backlog: this.store.getInteractionStats().pending,
+                payload: JSON.stringify({
+                    source: "x3_responder",
+                    route: "auto",
+                    score: evaluation.score,
+                    reason: evaluation.reason,
+                }),
             });
             return {
                 interaction: updated,
@@ -196,7 +249,29 @@ export class InteractionResponder {
             logger.warn("interaction_auto_reply_failed", {
                 interaction: interaction.id.slice(0, 8),
                 requestId: interaction.requestId,
+                auto_reply_strategy: this.policy.auto_reply_strategy,
+                auto_reply_decision: decision.decision,
+                route_factor: decision.routeFactor,
+                score_factor: decision.scoreFactor,
                 error: message,
+            });
+            this.store.appendMetricEvent({
+                eventType: "interaction_state_transition",
+                interactionId: interaction.id,
+                traceId: interaction.id,
+                from,
+                to: "rejected",
+                reason: "interaction_auto_reply_failed",
+                status: "rejected",
+                source: "x3_worker",
+                errorClass: "auto_reply_failed",
+                backlog: this.store.getInteractionStats().pending,
+                payload: JSON.stringify({
+                    source: "x3_responder",
+                    score: evaluation.score,
+                    reason: evaluation.reason,
+                    error: message,
+                }),
             });
             return {
                 interaction: updated,

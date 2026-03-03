@@ -6,6 +6,7 @@ import { InteractionDetector } from "./detector";
 import { InteractionEvaluator } from "./evaluator";
 import { InteractionProcessor } from "./processor";
 import { InteractionResponder } from "./responder";
+import { parseAutoReplyPolicy } from "./policy";
 import { X4Router } from "../x4/router";
 
 interface WorkerOptions {
@@ -16,6 +17,15 @@ interface WorkerOptions {
 }
 
 const logger = createLogger("X3.Worker");
+
+function parseJsonPolicy(raw: string | undefined): unknown | undefined {
+    if (!raw) return undefined;
+    try {
+        return JSON.parse(raw);
+    } catch {
+        return undefined;
+    }
+}
 
 function parseArgs(argv: string[]): WorkerOptions {
     const options: WorkerOptions = {
@@ -81,6 +91,29 @@ Options:
   --help                 Show this help`);
 }
 
+function resolveAutoReplyPolicy() {
+    let parseWarnings: string[] = [];
+    const fromPolicyJson = parseJsonPolicy(process.env.X3_AUTO_REPLY_POLICY);
+    if (process.env.X3_AUTO_REPLY_POLICY && fromPolicyJson === undefined) {
+        parseWarnings = [
+            "invalid X3_AUTO_REPLY_POLICY JSON; using default/legacy env values",
+        ];
+    }
+
+    const policyInput = fromPolicyJson ?? {
+        threshold: process.env.X3_AUTO_REPLY_THRESHOLD
+            ? Number(process.env.X3_AUTO_REPLY_THRESHOLD)
+            : undefined,
+        fallback: process.env.X3_AUTO_REPLY_FALLBACK,
+        auto_reply_strategy: process.env.X3_AUTO_REPLY_STRATEGY,
+    };
+    const parsed = parseAutoReplyPolicy(policyInput);
+    if (parseWarnings.length > 0) {
+        parsed.warnings = [...parseWarnings, ...parsed.warnings];
+    }
+    return parsed;
+}
+
 async function processPendingInteractions(
     processor: InteractionProcessor,
     maxProcessPerTick: number,
@@ -105,8 +138,15 @@ async function main() {
         const eq1Client = createEq1ClientFromEnv();
         const evaluator = new InteractionEvaluator(eq1Client);
         const x4Router = new X4Router(store, eq1Client);
+        const autoReplyPolicy = resolveAutoReplyPolicy();
+        if (autoReplyPolicy.warnings.length > 0) {
+            logger.warn("x3_auto_reply_policy_config", {
+                warnings: autoReplyPolicy.warnings,
+            });
+        }
         const responder = new InteractionResponder(store, server, {
             x4Router,
+            policy: autoReplyPolicy.policy,
         });
         processor = new InteractionProcessor(store, evaluator, responder);
         logger.info("x3_eq1_enabled", {

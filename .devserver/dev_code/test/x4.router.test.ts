@@ -10,10 +10,12 @@ import { X4Router } from "../../src/x4/router";
 class FakeEq1Client {
     outputs: Array<Record<string, unknown>> = [];
     routeCalls = 0;
+    routeInputs: string[] = [];
 
     async route() {
         this.routeCalls += 1;
         const output = this.outputs.shift() ?? {};
+        this.routeInputs.push(String(arguments[0] ?? ""));
         return {
             type: "route" as const,
             output,
@@ -45,7 +47,10 @@ function createInteraction(store: Store): Interaction {
     return upsert.interaction;
 }
 
-function createEvaluation(score: number, route: "auto" | "user"): InteractionEvaluation {
+function createEvaluation(
+    score: number,
+    route: "auto" | "user",
+): InteractionEvaluation {
     return {
         score,
         reason: "evaluation reason",
@@ -83,6 +88,21 @@ describe("X4Router", () => {
         expect(result.task).toBeDefined();
         expect(result.task?.type).toBe("omo_request");
         expect(result.task?.prompt).toBe("run follow-up task");
+        expect(result.decision.request_hash).toBeDefined();
+        expect(result.decision.parent_id).toBeDefined();
+        const routeInput = JSON.parse(eq1.routeInputs[0]!) as {
+            schema_version: string;
+            request_hash: string;
+            parent_id: string;
+            summary: {
+                schema_version: string;
+                request_hash: string;
+                parent_id: string;
+            };
+        };
+        expect(routeInput.schema_version).toBe("x4_route_request.v1");
+        expect(routeInput.summary.schema_version).toBe("x4_summary.v1");
+        expect(routeInput.request_hash).toBe(routeInput.summary.request_hash);
         store.close();
     });
 

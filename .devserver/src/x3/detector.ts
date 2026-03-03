@@ -19,7 +19,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function pickString(record: Record<string, unknown>, keys: string[]): string | null {
+function pickString(
+    record: Record<string, unknown>,
+    keys: string[],
+): string | null {
     for (const key of keys) {
         const value = record[key];
         if (typeof value === "string" && value.trim().length > 0) {
@@ -67,11 +70,7 @@ function extractRequestId(record: Record<string, unknown>): string | null {
 }
 
 function extractSessionId(record: Record<string, unknown>): string | null {
-    const direct = pickString(record, [
-        "sessionID",
-        "sessionId",
-        "session_id",
-    ]);
+    const direct = pickString(record, ["sessionID", "sessionId", "session_id"]);
     if (direct) return direct;
 
     const nested = nestedRecord(record, ["session", "request"]);
@@ -100,6 +99,7 @@ export class InteractionDetector {
     }
 
     async pollOnce(): Promise<DetectorPollStats> {
+        const traceId = `x3_detector_${Date.now()}`;
         const [permissions, questions] = await Promise.all([
             this.server.listPermissions(),
             this.server.listQuestions(),
@@ -113,6 +113,22 @@ export class InteractionDetector {
 
         this.consumeList("permission", permissions, stats);
         this.consumeList("question", questions, stats);
+        this.store.appendMetricEvent({
+            eventType: "interaction_poll",
+            traceId,
+            interactionId: null,
+            source: "x3_worker",
+            status: "healthy",
+            reason: "poll_done",
+            payload: JSON.stringify({
+                source: "x3_detector",
+                type: "poll_once",
+                seen: stats.seen,
+                enqueued: stats.enqueued,
+                duplicate: stats.duplicate,
+                invalid: stats.invalid,
+            }),
+        });
         logger.info("detector_poll_done", stats);
         return stats;
     }

@@ -12,9 +12,41 @@ opencode-supernova
 
 ```
 이상적 UX:
-  npx omo-dev-server --project /my-project
+  bun run dev
   # 끝. 격리된 환경에서 전부 기동
 ```
+
+## 문서 역할 (컨텍스트 계약)
+
+`AGENTS.md`는 실행 백로그 문서가 아니라, HOMSA 기반 구현에서 LLM이 따라야 하는 `컨텍스트 계약` 문서다.
+
+- 이 문서는 `무엇을 고정 불변으로 볼지`와 `어떤 문서를 우선 참조할지`를 정의한다.
+- 실행 항목/일일 로그는 `phase_TODO.md`와 `temp_TODO.md`에서만 관리한다.
+- 운영 상태/장애 기록은 `operations.md`에서만 관리한다.
+- 계약 상세와 메타데이터 스키마는 `context-contract.md`를 단일 기준으로 사용한다.
+
+---
+
+## 섹션별 업데이트 참고 파일 (빠른 갱신 가이드)
+
+아래 표는 `AGENTS.md` 각 섹션을 갱신할 때 먼저 확인할 기준 파일이다.
+
+| AGENTS.md 섹션 | 업데이트 참고 파일 (우선순위 순) | 빠른 확인 포인트 |
+|---|---|---|
+| 프로젝트명 / 프로젝트 목표 | `.devserver/README.md`, `.devserver/docs/phase_TODO.md`, `.devserver/docs/temp_TODO.md`, `.devserver/docs/context-contract.md` | 현재 목표/범위/제외 범위가 최신인지 |
+| HOMSA 위치 정의(전체 시스템 구조~Dₚ 조건) | `.devserver/docs/HOMSA.md`, `.devserver/src/opencode-server-wrapper.ts`, `.devserver/src/x2/*.ts`, `.devserver/src/x3/*.ts`, `.devserver/src/x4/*.ts`, `.devserver/src/eq1/*.ts` | X/Eq/D/W/L/L' 정의와 실제 구현 정합성 |
+| 아키텍처 결정사항 | `.devserver/dev-up.sh`, `.devserver/entrypoint.sh`, `.devserver/opencode.json`, `.devserver/run-sync/oh-my-opencode.jsonc`, `.devserver/.env.example` | 확정/미확정 상태가 코드 기준과 일치하는지 |
+| Queue 설계 | `.devserver/src/x2/store.ts`, `.devserver/src/x2/queue.ts`, `.devserver/src/x3/detector.ts`, `.devserver/src/x3/responder.ts` | 테이블/상태/채널 매핑이 현재 로직과 맞는지 |
+| 패키지 구성 | `.devserver/docs/project-structure.md`, `.devserver/README.md` | 현재 구현 구조와 목표 구조의 차이 갱신 |
+| 기동 방식 (현재 동작) | `package.json`, `.devserver/dev-up.sh`, `.devserver/dev-doctor.sh`, `.devserver/dev-smoke.sh` | 실제 실행 커맨드와 문서 예시 일치 여부 |
+| 작업 우선순위 | `.devserver/docs/phase_TODO.md`, `.devserver/docs/temp_TODO.md` | phase 상태/완료 조건/현재 focus 정렬 |
+| 핵심 원칙 | `.devserver/docs/HOMSA.md`, `.devserver/docs/phase_TODO.md`, `.devserver/docs/context-contract.md` | 원칙 문구와 운영 정책(가변/확정) 충돌 여부 |
+| Wrapper 현황 | `.devserver/src/opencode-server-wrapper.ts`, `.devserver/dev_code/test/wrapper.test.ts`, `.devserver/docs/api.md` | 메서드 수/분류/미구현 목록 최신화 |
+| Dₚ 사용 시나리오 | `.devserver/docs/isolation.md`, `.devserver/dev-up.sh`, `.devserver/opencode.json` | 격리/포트/멀티 프로젝트 시나리오 정합성 |
+| 참고 문서 | `.devserver/docs/` 하위 문서 전체, `phase_TODO.md`, `temp_TODO.md` | 링크 누락/경로 오타/중복 제거 |
+| 관련 프로젝트 | OpenCode/OmO/Dashboard 공식 repo README | 버전/링크/역할 설명 최신화 |
+| OpenCode 격리 관련 환경변수 | `.devserver/.env.example`, `.devserver/dev-up.sh`, `.devserver/entrypoint.sh` | env 이름/기본값/설명 동기화 |
+| 현재 런타임 상태 | `.devserver/docs/operations.md` | 운영 상태/차단요인/운영 이력 갱신 시점 |
 
 ---
 
@@ -267,136 +299,29 @@ User → X₁(프로토콜) → W₁ → X₂(Queue) → W₂ → X_oc(실행)
 
 ## Queue 설계 (확정)
 
-### Task Queue 테이블
+Queue 스키마 상세는 단일 문서로 위임한다.
 
-```sql
-tasks (
-  id          INTEGER PRIMARY KEY,
-  type        TEXT,       -- 'classify' | 'omo_request' | 'evaluate' | 'summarize' | 'route' | 'report'
-  prompt      TEXT,
-  status      TEXT,       -- 'pending' | 'running' | 'completed' | 'failed'
-  result      TEXT,       -- 판단 맥락 또는 실행 결과 (JSON)
-  parent_id   INTEGER,    -- 후속 task면 원본 참조
-  session_id  TEXT,
-  created_at  DATETIME,
-  updated_at  DATETIME
-)
-```
+- `./SCHEMA.md`
 
-### Interaction Queue 테이블
+본 섹션은 원칙만 유지한다.
 
-```sql
-interactions (
-  id          INTEGER PRIMARY KEY,
-  type        TEXT,       -- 'permission' | 'question'
-  request_id  TEXT,       -- opencode의 permissionID / questionID
-  session_id  TEXT,
-  payload     TEXT,       -- 질문/권한 내용 (JSON)
-  status      TEXT,       -- 'pending' | 'answered' | 'rejected'
-  answer      TEXT,       -- 응답 내용 (JSON)
-  created_at  DATETIME,
-  answered_at DATETIME
-)
-```
-
-### Task Types — 실행 채널 매핑
-
-| type | 설명 | 실행 채널 | W |
-|------|------|-----------|---|
-| `classify` | 사용자 입력 분류 (잡담/명령/task) | Eq₁ (LLM client) | W₄ → W₁ 분기 |
-| `omo_request` | 메인 프롬프트 실행 | X_oc (opencode wrapper) | W₂ |
-| `evaluate` | permission/question 중요도 판단 | Eq₁ (LLM client) | W₄ |
-| `summarize` | 판단 맥락 생성 (후속 판단자용 구조화) | Eq₁ (LLM client) | W₄ |
-| `route` | 후속 판단 (새 task or report) | Eq₁ (LLM client) | W₄ |
-| `report` | 사용자에게 보고 | X₁ (프로토콜) | W₆ |
-
-- **X_oc 채널**: `omo_request` — opencode wrapper 통해 실행, 세션 관리 포함
-- **Eq₁ 채널**: `classify`, `evaluate`, `summarize`, `route` — 별도 LLM client 통해 실행, loop성 task chain
-- **X₁ 채널**: `report` — 사용자 전달 (W₆)
-- **W₅** (`ESCALATE` → `RELAY_REPLY`)는 task queue가 아닌 **interaction queue**를 통해 처리. task type으로는 표현하지 않음
-- 같은 채널 내에서 순차 실행, 다른 채널은 독립 실행 가능
+- queue는 `tasks`와 `interactions`를 분리한다.
+- 실행 채널(`X_oc`, `Eq1`, `X1`)은 분리한다.
+- `W5`는 interaction queue 경로로 처리한다.
 
 ---
 
 ## 패키지 구성
 
-### 현재 구현 (.devserver/)
+패키지 구성 상세(현재 트리/모듈 상태/목표 구조)는 아래 문서를 단일 기준으로 관리한다.
 
-```
-/project-x/
-  ├── .devserver/                     ← Dₚ 전체 (격리 환경 일체)
-  │   ├── dev-up.sh                   ← 격리 환경 기동 스크립트
-  │   ├── opencode.json               ← OpenCode 메인 설정 (모델, 권한, 서버, 플러그인)
-  │   ├── oh-my-opencode.jsonc        ← OmO 설정 (에이전트별 모델, 카테고리)
-  │   ├── package.json                ← devserver 의존성 (opencode-ai, oh-my-opencode, @opencode-ai/sdk)
-  │   ├── opencode-server-wrapper.ts  ← SDK 싱글톤 래퍼 (60개 메서드)
-  │   ├── dashboard-screenshot.ts     ← Dashboard 캡처 POC (puppeteer-core)
-  │   ├── x2/                         ← X₂ 모듈 (초기 구현, 리팩토링 대상)
-  │   │   ├── store.ts                ← state.db 관리 (bun:sqlite, Task CRUD)
-  │   │   ├── queue.ts                ← 대기열 + dispatch/finalize + retry_at 백오프
-  │   │   ├── router.ts               ← 결과 분기 (Reporter 인터페이스)
-  │   │   ├── summarizer.ts           ← PromptResult → 요약/비용/변경사항
-  │   │   └── worker.ts               ← X₂ 워커 엔트리 (loop/once)
-  │   ├── eq1/                        ← Eq₁ 모듈 (Phase 3)
-  │   │   ├── task-types.ts           ← classify/evaluate/summarize/route 상수/검증
-  │   │   ├── types.ts                ← provider/client 공통 타입
-  │   │   ├── llm-client.ts           ← W₄ LLM client 스캐폴드 (provider 교체 가능)
-  │   │   ├── mock-provider.ts        ← 테스트용 provider
-  │   │   └── index.ts                ← Eq₁ export
-  │   ├── utils/                      ← 공용 유틸
-  │   │   ├── retry.ts                ← 재시도/백오프 공용 함수
-  │   │   └── logging.ts              ← 구조화 로그 공용 함수
-  │   ├── config/opencode/            ← XDG_CONFIG_HOME (런타임 자동 생성)
-  │   ├── data/opencode/              ← XDG_DATA_HOME
-  │   │   ├── auth.json               ← 인증 정보 (OAuth 토큰)
-  │   │   ├── opencode.db             ← 세션/메시지 DB (SQLite)
-  │   │   ├── log/                    ← 실행 로그
-  │   │   ├── bin/                    ← 런타임 바이너리 (rg 등)
-  │   │   └── storage/                ← 세션 스토리지
-  │   ├── cache/opencode/             ← XDG_CACHE_HOME
-  │   ├── screenshots/                ← Dashboard 스크린샷 출력
-  │   ├── docs/                       ← 내부 문서
-  │   │   ├── api.md                  ← OpenCode HTTP API 레퍼런스 (83 엔드포인트)
-  │   │   ├── isolation.md            ← XDG 격리 아키텍처 설명
-  │   │   └── project-structure.md    ← 디렉토리 구조 설명
-  │   └── node_modules/               ← devserver 의존성
-  ├── package.json                    ← 프로젝트 루트 (scripts: dev, dashboard)
-  ├── CLAUDE.md                       ← 이 문서
-  ├── HOMSA.md                        ← 아키텍처 프레임워크
-  └── src/                            ← 실제 프로젝트 소스
-```
+- `./docs/project-structure.md`
 
-### 목표 파일 구조 (X₂/X₃/X₄ 분화 후)
+이 섹션에는 중복 트리 전문을 두지 않고, 아키텍처 관점의 요약만 유지한다.
 
-```
-src/
-  ├── x1/                    # 통신 프로토콜 (user ↔ system)
-  │   └── telegram.ts        # Telegram Bot 구현 (교환 가능)
-  │
-  ├── x2/                    # Task 실행
-  │   ├── queue.ts           # task queue CRUD (SQLite)
-  │   ├── executor.ts        # task 실행 (wrapper 호출)
-  │   ├── retry.ts           # 에러/재시도 정책
-  │   └── loop.ts            # cron 스케줄러
-  │
-  ├── x3/                    # OC Interaction (감지 + 판단 + 분기)
-  │   ├── queue.ts           # interaction queue CRUD (SQLite)
-  │   ├── detector.ts        # permission/question 감지 (W₃ 폴링)
-  │   ├── evaluator.ts       # LLM 중요도 판단 (W₄ → Eq₁)
-  │   ├── responder.ts       # 분기: score ≤ 6 → W₃ 자동응답, score > 6 → W₅ 사용자 전달
-  │   └── loop.ts            # cron 스케줄러
-  │
-  ├── x4/                    # 판단 맥락 생성 + 라우팅
-  │   ├── summarizer.ts      # 판단 맥락 생성기 (후속 판단자가 stateless로 판단 가능한 구조화된 맥락)
-  │   └── router.ts          # LLM 판단 → new task / report
-  │
-  └── lib/
-      ├── store.ts           # SQLite 공유 (task + interaction 테이블)
-      ├── wrapper.ts         # opencode-server-wrapper — W₂/W₃ + L'_wrapper (60개 메서드)
-      ├── llm-client.ts      # LLM API client — W₄ (loop성 task chain 실행)
-      ├── health.ts          # 헬스체크
-      └── logger.ts          # 로깅/감사
-```
+- 현재 구현 기준 루트: `.devserver/` (Dₚ 패키지)
+- 핵심 모듈: `eq1`, `x2`, `x3`, `x4`, `opencode-server-wrapper`
+- 구조 변경 시 반영 순서: `project-structure.md` 갱신 → 본 문서(AGENTS.md) 요약 동기화
 
 ---
 
@@ -417,23 +342,28 @@ bun run dashboard
 
 ---
 
-## 작업 우선순위
+## 구현 위치 (HOMSA MVP 기준)
 
-| Phase | 대상 | 내용 | 완료 조건 | 상태 |
-|-------|------|------|-----------|------|
-| 1 | Dₚ 격리 + X_oc | 격리 환경, wrapper | 격리된 opencode serve 가동 + SDK wrapper | ✅ 완료 |
-| 2 | X₂ | `POLL_TASK/EXECUTE/COMPLETE/FAIL` 실행 루프 + `ENQUEUE` 입력 인터페이스 | task 넣으면 X_oc가 실행하고 결과 저장 | ✅ 완료 |
-| 3 | Eq₁ | LLM client 구현 | W₄ 경로로 LLM 호출 가능 | ✅ 완료 |
-| 4 | X₃ + X₄ | 병렬 구현. X₃: oc interaction, X₄: 맥락 생성 + 라우팅 | 전체 주기 1회 완주 | - |
-| 5 | X₁ | 통신 프로토콜 (Telegram) | user → 주기 → report 전체 동작 | - |
+HOMSA 적용 절차 (`HOMSA.md § 14`) 완료 상태:
 
-### Phase 1 완료 내역
+| 단계 | 내용 | 상태 |
+|------|------|------|
+| Xₙ 식별 | X₁~X₄, X_oc | ✅ |
+| Lₙ 정의 | 16개 연산 enum | ✅ |
+| W 정의 | W₁~W₇ | ✅ |
+| Dₚ 설계 | `.devserver/` 격리 + state.db 스키마 | ✅ |
+| Eq 식별 | Eq₁ (LLM client) | ✅ |
+| L'ₙ 설계 | L'_wrapper 구현 완료 / L'_oc, L'_q 미정 | 일부 |
+| So 설계 | 미정 | - |
 
-- `.devserver/` 격리 환경: opencode-ai@1.2.11 + oh-my-opencode@3.8.5 로컬 설치
-- XDG 환경변수 5개로 config/data/cache 완전 격리 (`dev-up.sh`)
-- SDK wrapper (`opencode-server-wrapper.ts`): 싱글톤 패턴, 60개 메서드
-- Dashboard 백그라운드 기동 (port 51234) + 스크린샷 POC
-- API 문서화: `docs/api.md` (83 엔드포인트), `docs/isolation.md`, `docs/project-structure.md`
+MVP 진행 상태 (`HOMSA.md § 14.1`):
+
+| MVP | 1cycle 정의 | 상태 |
+|-----|------------|------|
+| **MVP-0** | test input → X₂ → X_oc → X₃/X₄ → state.db | 진행 중 |
+| **MVP-1** | X₁(Telegram) → 주기 → X₁(report) | 미시작 |
+
+현재 구현: X_oc ✅ · X₂ ✅ · Eq₁ ✅ · X₃ 구현 중 · X₄ 구현 중
 
 ---
 
@@ -500,12 +430,16 @@ User (Telegram)
 
 ## 참고 문서
 
-- `./docs/PHASE_STATUS.md` — Phase별 상태 보드 및 완료 조건
-- `./docs/TODO.md` — 실행 백로그 및 우선순위 TODO
+- `./context-contract.md` — HOMSA 기반 AGENTS 생성/갱신용 컨텍스트 계약
 - `./HOMSA.md` — 프레임워크 기준 문서 (v1.2.1)
-- `./.devserver/docs/api.md` — OpenCode HTTP API 레퍼런스
-- `./.devserver/docs/isolation.md` — 격리 아키텍처 설명
-- `./.devserver/docs/project-structure.md` — 디렉토리 구조 설명
+- `./HOMSA-META.md` — HOMSA 적용 메타 결정/맹점 기록
+- `./phase_TODO.md` — phase 단위 상태/완료 조건
+- `./temp_TODO.md` — 현재 실행 phase 작업/로그 문서
+- `./operations.md` — 운영 상태/차단요인 기록
+- `./SCHEMA.md` — queue/interaction 스키마 원칙
+- `./api.md` — OpenCode HTTP API 레퍼런스
+- `./isolation.md` — 격리 아키텍처 설명
+- `./project-structure.md` — 디렉토리 구조 설명
 
 ---
 
@@ -530,21 +464,15 @@ User (Telegram)
 
 ---
 
-## 현재 런타임 상태 (2026-02-26 확인)
+## 현재 런타임 상태
 
-| 항목 | 상태 |
-|------|------|
-| OpenCode 서버 | 가동 중 (`127.0.0.1:4996`, v1.2.11, healthy) |
-| 로컬 DB | `.devserver/data/opencode/opencode.db` (160KB + 4MB WAL) |
-| 세션 수 | 4개 (scenario-async 3, hello.txt 1) |
-| OmO 플러그인 | oh-my-opencode@3.8.5 로드됨 |
-| Dashboard | dev-up.sh에서 port 51234로 동시 기동 |
-| X₂ 모듈 | store/queue/router/summarizer 구현 완료 (미통합 테스트) |
-| `.devserver/**` 접근 제한 | opencode.json permission에서 deny 설정됨 |
+운영 상태 스냅샷은 별도 운영 문서로 관리한다.
+
+- [`docs/operations.md`](/home/nova/project/homsa/.devserver/docs/operations.md)
 
 ---
 
 *Created: 2026-02-25*
-*Updated: 2026-02-26*
+*Updated: 2026-03-03*
 *HOMSA v1.2.1 기반*
-*Phase 1 완료 → Phase 2 (X₂ 구현) 진행 중*
+*운영 상태는 docs/operations.md, 백로그는 phase_TODO.md + temp_TODO.md 기준으로 갱신*

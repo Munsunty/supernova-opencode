@@ -61,13 +61,31 @@ export interface InteractionStats {
     rejected: number;
 }
 
+export type MetricStatus =
+    | "pending"
+    | "running"
+    | "completed"
+    | "failed"
+    | "answered"
+    | "rejected"
+    | "healthy"
+    | "unhealthy"
+    | (string & {});
+
 export interface MetricEvent {
     id: string;
     eventType: string;
     taskId: string | null;
     interactionId: string | null;
+    traceId: string | null;
     taskType: TaskType | null;
-    status: TaskStatus | null;
+    status: MetricStatus | null;
+    fromState: string | null;
+    toState: string | null;
+    reason: string | null;
+    source: string | null;
+    requestHash: string | null;
+    parentId: string | null;
     durationMs: number | null;
     backlog: number | null;
     errorClass: string | null;
@@ -147,9 +165,16 @@ export class Store {
 	      CREATE TABLE IF NOT EXISTS metrics_events (
 	        id TEXT PRIMARY KEY,
 	        event_type TEXT NOT NULL,
+	        trace_id TEXT,
 	        task_id TEXT,
 	        interaction_id TEXT,
+	        request_hash TEXT,
+	        parent_id TEXT,
+	        source TEXT,
 	        task_type TEXT,
+	        from_state TEXT,
+	        to_state TEXT,
+	        reason TEXT,
 	        status TEXT,
 	        duration_ms INTEGER,
 	        backlog INTEGER,
@@ -158,6 +183,13 @@ export class Store {
 	        created_at INTEGER NOT NULL
 	      )
 	    `);
+        this.ensureMetricColumn("trace_id", "TEXT");
+        this.ensureMetricColumn("request_hash", "TEXT");
+        this.ensureMetricColumn("parent_id", "TEXT");
+        this.ensureMetricColumn("source", "TEXT");
+        this.ensureMetricColumn("from_state", "TEXT");
+        this.ensureMetricColumn("to_state", "TEXT");
+        this.ensureMetricColumn("reason", "TEXT");
         this.db.exec(`
 	      CREATE INDEX IF NOT EXISTS idx_metrics_events_created ON metrics_events(created_at)
 	    `);
@@ -166,6 +198,9 @@ export class Store {
 	    `);
         this.db.exec(`
 	      CREATE INDEX IF NOT EXISTS idx_metrics_events_task_id ON metrics_events(task_id)
+	    `);
+        this.db.exec(`
+	      CREATE INDEX IF NOT EXISTS idx_metrics_events_trace_id ON metrics_events(trace_id)
 	    `);
     }
 
@@ -177,6 +212,18 @@ export class Store {
         if (!hasColumn) {
             this.db.exec(
                 `ALTER TABLE tasks ADD COLUMN ${column} ${definition}`,
+            );
+        }
+    }
+
+    private ensureMetricColumn(column: string, definition: string) {
+        const cols = this.db
+            .prepare("PRAGMA table_info(metrics_events)")
+            .all() as { name: string }[];
+        const hasColumn = cols.some((c) => c.name === column);
+        if (!hasColumn) {
+            this.db.exec(
+                `ALTER TABLE metrics_events ADD COLUMN ${column} ${definition}`,
             );
         }
     }
@@ -555,8 +602,15 @@ export class Store {
         eventType: string;
         taskId?: string | null;
         interactionId?: string | null;
+        traceId?: string | null;
+        source?: string | null;
+        requestHash?: string | null;
+        parentId?: string | null;
+        from?: string | null;
+        to?: string | null;
+        reason?: string | null;
         taskType?: TaskType | null;
-        status?: TaskStatus | null;
+        status?: MetricStatus | null;
         durationMs?: number | null;
         backlog?: number | null;
         errorClass?: string | null;
@@ -568,16 +622,24 @@ export class Store {
         this.db
             .prepare(
                 `INSERT INTO metrics_events (
-                   id, event_type, task_id, interaction_id, task_type, status,
+                   id, event_type, trace_id, task_id, interaction_id, request_hash, parent_id,
+                   source, task_type, from_state, to_state, reason, status,
                    duration_ms, backlog, error_class, payload, created_at
-                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             )
             .run(
                 id,
                 input.eventType,
+                input.traceId ?? null,
                 input.taskId ?? null,
                 input.interactionId ?? null,
+                input.requestHash ?? null,
+                input.parentId ?? null,
+                input.source ?? null,
                 input.taskType ?? null,
+                input.from ?? null,
+                input.to ?? null,
+                input.reason ?? null,
                 input.status ?? null,
                 input.durationMs ?? null,
                 input.backlog ?? null,
@@ -710,12 +772,16 @@ export class Store {
                     : null;
 
         const rawStatus = (row.status as string | null) ?? null;
-        const status: TaskStatus | null =
+        const status: MetricStatus | null =
             rawStatus === "pending" ||
             rawStatus === "running" ||
             rawStatus === "completed" ||
-            rawStatus === "failed"
-                ? rawStatus
+            rawStatus === "failed" ||
+            rawStatus === "answered" ||
+            rawStatus === "rejected" ||
+            rawStatus === "healthy" ||
+            rawStatus === "unhealthy"
+                ? (rawStatus as MetricStatus)
                 : null;
 
         return {
@@ -723,8 +789,15 @@ export class Store {
             eventType: row.event_type as string,
             taskId: (row.task_id as string) ?? null,
             interactionId: (row.interaction_id as string) ?? null,
+            traceId: (row.trace_id as string) ?? null,
             taskType,
             status,
+            fromState: (row.from_state as string) ?? null,
+            toState: (row.to_state as string) ?? null,
+            reason: (row.reason as string) ?? null,
+            source: (row.source as string) ?? null,
+            requestHash: (row.request_hash as string) ?? null,
+            parentId: (row.parent_id as string) ?? null,
             durationMs:
                 row.duration_ms === null || row.duration_ms === undefined
                     ? null

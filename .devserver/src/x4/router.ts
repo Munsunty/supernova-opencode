@@ -11,7 +11,20 @@ export interface X4RouteDecision {
     reason: string;
     prompt: string | null;
     raw: Record<string, unknown>;
+    schema_version?: string;
+    request_hash?: string;
+    parent_id?: string;
 }
+
+export interface X4RouteRequest {
+    schema_version: string;
+    request_hash: string;
+    parent_id: string;
+    summary: Record<string, unknown>;
+}
+
+const ROUTE_REQUEST_SCHEMA_VERSION = "x4_route_request.v1";
+const ROUTE_RESPONSE_SCHEMA_VERSION = "x4_route_response.v1";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -36,7 +49,9 @@ function normalizeAction(value: unknown): X4RouteDecision["action"] | null {
     return null;
 }
 
-function fallbackAction(evaluation: InteractionEvaluation): X4RouteDecision["action"] {
+function fallbackAction(
+    evaluation: InteractionEvaluation,
+): X4RouteDecision["action"] {
     return evaluation.score > 6 ? "report" : "skip";
 }
 
@@ -62,6 +77,54 @@ function buildTaskPrompt(
     return fallbackReason;
 }
 
+function buildRouteRequest(
+    interaction: Interaction,
+    summary: Record<string, unknown>,
+): X4RouteRequest {
+    const requestHash = toText(summary.request_hash) ?? "missing";
+    const parentId = toText(summary.parent_id) ?? interaction.id;
+    return {
+        schema_version: ROUTE_REQUEST_SCHEMA_VERSION,
+        request_hash: requestHash,
+        parent_id: parentId,
+        summary,
+    };
+}
+
+function buildRouteDecision(
+    output: Record<string, unknown>,
+    evaluation: InteractionEvaluation,
+    summary: Record<string, unknown>,
+    summaryText: string,
+): X4RouteDecision {
+    const action = normalizeAction(output.action) ?? fallbackAction(evaluation);
+    const reason =
+        toText(output.reason) ??
+        toText(output.route_reason) ??
+        evaluation.reason;
+    const prompt =
+        action === "skip"
+            ? null
+            : buildTaskPrompt(action, summaryText, output, reason);
+
+    return {
+        action,
+        reason,
+        prompt,
+        raw: output,
+        schema_version:
+            toText(output.schema_version) ?? ROUTE_RESPONSE_SCHEMA_VERSION,
+        request_hash:
+            toText(output.request_hash) ??
+            toText(summary.request_hash as unknown) ??
+            "missing",
+        parent_id:
+            toText(output.parent_id) ??
+            toText(summary.parent_id as unknown) ??
+            undefined,
+    };
+}
+
 export class X4Router {
     private store: Store;
     private eq1Client: Eq1Client;
@@ -76,18 +139,23 @@ export class X4Router {
         evaluation: InteractionEvaluation,
     ): Promise<{ decision: X4RouteDecision; task: Task | null }> {
         const summary = summarizeInteractionContext(interaction, evaluation);
+        const request = buildRouteRequest(interaction, summary);
+        const requestPayload = JSON.stringify(request, null, 2);
         const summaryText = JSON.stringify(summary, null, 2);
 
         let output: Record<string, unknown> = {};
         try {
-            const result = await this.eq1Client.route(summaryText, {
+            const result = await this.eq1Client.route(requestPayload, {
                 interactionType: interaction.type,
                 requestId: interaction.requestId,
                 source: "x4_router",
+                x4_route_request_hash: request.request_hash,
+                x4_route_parent_id: request.parent_id,
             });
             output = isRecord(result.output) ? result.output : {};
         } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
+            const message =
+                error instanceof Error ? error.message : String(error);
             logger.warn("x4_route_call_failed", {
                 interaction: interaction.id.slice(0, 8),
                 requestId: interaction.requestId,
@@ -95,36 +163,44 @@ export class X4Router {
             });
         }
 
-        const action = normalizeAction(output.action) ?? fallbackAction(evaluation);
-        const reason =
-            toText(output.reason) ??
-            toText(output.route_reason) ??
-            evaluation.reason;
-        const prompt =
-            action === "skip"
-                ? null
-                : buildTaskPrompt(action, summaryText, output, reason);
+        const decision = buildRouteDecision(
+            output,
+            evaluation,
+            summary,
+            summaryText,
+        );
+
+        if (
+            toText(decision.request_hash) &&
+            toText(output.request_hash) &&
+            output.request_hash !== request.request_hash
+        ) {
+            logger.warn("x4_route_request_hash_mismatch", {
+                interaction: interaction.id.slice(0, 8),
+                expected: request.request_hash,
+                observed: output.request_hash,
+            });
+        }
 
         let task: Task | null = null;
-        if (action !== "skip" && prompt) {
-            const type: TaskType = action === "new_task" ? "omo_request" : "report";
-            task = this.store.createTask(prompt, "x4", type);
+        if (decision.action !== "skip" && decision.prompt) {
+            const type: TaskType =
+                decision.action === "new_task" ? "omo_request" : "report";
+            task = this.store.createTask(decision.prompt, "x4", type);
         }
 
         logger.info("x4_route_decision", {
             interaction: interaction.id.slice(0, 8),
             requestId: interaction.requestId,
-            action,
+            action: decision.action,
             task: task ? task.id.slice(0, 8) : null,
+            schema_version: decision.schema_version,
+            request_hash: decision.request_hash,
+            parent_id: decision.parent_id,
         });
 
         return {
-            decision: {
-                action,
-                reason,
-                prompt,
-                raw: output,
-            },
+            decision,
             task,
         };
     }

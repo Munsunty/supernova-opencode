@@ -23,14 +23,15 @@
 - `23f4503` — `phase3: harden eq1 failure-paths, retry boundaries, and logging redaction`
 - `011c25c` — `phase4: add x3 detector loop and interaction queue scaffold`
 
-상세 상태와 완료 조건은 `docs/PHASE_STATUS.md`를 기준으로 관리합니다.
+상세 상태와 완료 조건은 `phase_TODO.md`의 `Previous`/`Present`를 기준으로 관리합니다.
 
 ## Docs
 
 - `AGENTS.md`
 - `HOMSA.md`
-- `docs/PHASE_STATUS.md`
 - `docs/TODO.md`
+- `.devserver/docs/phase_TODO.md`
+- `.devserver/docs/temp_TODO.md`
 - `.devserver/docs/project-structure.md`
 - `.devserver/docs/isolation.md`
 

@@ -13,12 +13,16 @@ import { computeBackoffDelay } from "../utils/retry";
 import type { Eq1Client } from "../eq1/llm-client";
 import { isEq1TaskType } from "../eq1/task-types";
 import { createHash } from "node:crypto";
+import { createLogger } from "../utils/logging";
 import type {
     OpenCodeServer,
     MessageWithParts,
 } from "../opencode-server-wrapper";
 
 type SessionStatusMap = Record<string, { type: string }>;
+type TaskTransitionReason = string;
+
+const logger = createLogger("X2.Queue");
 
 interface FailureOptions {
     resetSession?: boolean;
@@ -80,16 +84,29 @@ export class Queue {
     async dispatchNext(): Promise<Task | null> {
         const task = this.store.claimNextPending(this.now());
         if (!task) return null;
+        this.logTaskTransition(
+            task,
+            "pending",
+            "running",
+            "claimed_for_dispatch",
+        );
 
         if (task.type === "report") {
             // report는 X_oc 실행 대상이 아니라 전달 대상이므로 즉시 완료 처리한다.
-            return this.store.updateTask(task.id, {
+            const updated = this.store.updateTask(task.id, {
                 status: "completed",
                 retryAt: null,
                 result: task.prompt,
                 error: null,
                 completedAt: this.now(),
             });
+            this.logTaskTransition(
+                updated,
+                "running",
+                "completed",
+                "report_auto_completed",
+            );
+            return updated;
         }
 
         if (isEq1TaskType(task.type)) {
@@ -125,13 +142,23 @@ export class Queue {
                     2,
                 );
 
-                return this.store.updateTask(task.id, {
+                const updated = this.store.updateTask(task.id, {
                     status: "completed",
                     retryAt: null,
                     result: stored,
                     error: null,
                     completedAt: this.now(),
                 });
+                this.logTaskTransition(
+                    updated,
+                    "running",
+                    "completed",
+                    "eq1_task_completed",
+                    {
+                        provider: result.provider,
+                    },
+                );
+                return updated;
             } catch (error) {
                 return this.handleFailure(task, error, {
                     resetSession: false,
@@ -149,6 +176,13 @@ export class Queue {
             }
 
             await this.server.promptAsync(session.id, task.prompt);
+            this.logTaskTransition(
+                task,
+                "running",
+                "running",
+                "opencode_prompt_dispatched",
+                { sessionId: task.sessionId ?? session.id },
+            );
             // dispatch 성공 시 terminal 상태가 아니므로 null
             return null;
         } catch (error) {
@@ -166,11 +200,20 @@ export class Queue {
         if (!running) return null;
 
         if (!running.sessionId) {
-            return this.handleFailure(
+            const failed = this.handleFailure(
                 running,
                 new Error("Running task has no sessionId"),
                 { resetSession: true },
             );
+            if (failed) {
+                this.logTaskTransition(
+                    failed,
+                    "running",
+                    failed.status,
+                    "finalization_pending_session",
+                );
+            }
+            return failed;
         }
 
         let statuses: SessionStatusMap;
@@ -178,10 +221,19 @@ export class Queue {
             statuses =
                 (await this.server.getSessionStatuses()) as SessionStatusMap;
         } catch (error) {
-            return this.handleFailure(running, error, {
+            const failed = this.handleFailure(running, error, {
                 resetSession: false,
                 markCompletedAt: false,
             });
+            if (failed) {
+                this.logTaskTransition(
+                    failed,
+                    "running",
+                    failed.status,
+                    "finalization_no_status",
+                );
+            }
+            return failed;
         }
 
         const status = statuses[running.sessionId];
@@ -196,11 +248,20 @@ export class Queue {
             const messages = await this.server.getMessages(running.sessionId);
             const assistant = this.findLastAssistant(messages);
             if (!assistant) {
-                return this.handleFailure(
+                const failed = this.handleFailure(
                     running,
                     new Error("No assistant message found after session idle"),
                     { resetSession: true },
                 );
+                if (failed) {
+                    this.logTaskTransition(
+                        failed,
+                        "running",
+                        failed.status,
+                        "finalization_no_assistant",
+                    );
+                }
+                return failed;
             }
 
             const summary = summarize({
@@ -209,15 +270,33 @@ export class Queue {
             });
             const formatted = formatSummary(summary);
 
-            return this.store.updateTask(running.id, {
+            const updated = this.store.updateTask(running.id, {
                 status: "completed",
                 retryAt: null,
                 result: formatted,
                 error: null,
                 completedAt: this.now(),
             });
+            this.logTaskTransition(
+                updated,
+                "running",
+                "completed",
+                "finalization_idle_complete",
+            );
+            return updated;
         } catch (error) {
-            return this.handleFailure(running, error, { resetSession: true });
+            const failed = this.handleFailure(running, error, {
+                resetSession: true,
+            });
+            if (failed) {
+                this.logTaskTransition(
+                    failed,
+                    "running",
+                    failed.status,
+                    "finalization_failed",
+                );
+            }
+            return failed;
         }
     }
 
@@ -326,8 +405,52 @@ export class Queue {
                       : now,
             sessionId: options.resetSession ? null : task.sessionId,
         });
+        this.logTaskTransition(
+            updated,
+            task.status,
+            updated.status,
+            shouldRetry ? "retry_scheduled" : "final_status",
+            {
+                attempts,
+                retryDelayMs: shouldRetry ? retryDelayMs : null,
+                markCompletedAt: options.markCompletedAt ?? true,
+            },
+        );
 
         return shouldRetry ? null : updated;
+    }
+
+    private logTaskTransition(
+        task: Task,
+        from: "pending" | "running" | "completed" | "failed",
+        to: "pending" | "running" | "completed" | "failed",
+        reason: TaskTransitionReason,
+        extra?: Record<string, string | number | null | boolean | undefined>,
+    ): void {
+        const payload = {
+            trace_id: task.id,
+            task_id: task.id,
+            from,
+            to,
+            reason,
+            type: task.type,
+            source: task.source,
+            ...(extra ?? {}),
+        };
+        logger.info("task_state_transition", payload);
+        this.store.appendMetricEvent({
+            eventType: "task_state_transition",
+            traceId: task.id,
+            taskId: task.id,
+            taskType: task.type,
+            status: to,
+            from: from,
+            to: to,
+            reason,
+            source: task.source,
+            backlog: this.store.getStats().pending,
+            payload: JSON.stringify(payload),
+        });
     }
 
     private getRetryDelayMs(attempts: number): number {

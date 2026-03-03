@@ -84,5 +84,5 @@ opencode-supernova/
 ## 문서 반영 원칙
 
 - 구조 문서는 **현재 커밋 트리와 git 로그 기준**으로 유지한다.
-- 구현 상태는 `docs/PHASE_STATUS.md`와 일치해야 한다.
+- 구현 상태는 `phase_TODO.md`의 `Present`와 일치해야 한다.
 - 목표 구조(미래 설계)는 `AGENTS.md`/`HOMSA.md`에 두고, 본 문서는 **현행 구현**만 기록한다.

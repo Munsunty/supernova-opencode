@@ -22,17 +22,37 @@ export class InteractionProcessor {
     }
 
     nextPending(): Interaction | null {
-        return this.store.listInteractions({ status: "pending", limit: 1 })[0] ?? null;
+        return (
+            this.store.listInteractions({ status: "pending", limit: 1 })[0] ??
+            null
+        );
     }
 
     async processNext(): Promise<ResponderResult | null> {
         const interaction = this.nextPending();
         if (!interaction) return null;
+        const from = interaction.status;
 
         logger.info("interaction_processing_started", {
             interaction: interaction.id.slice(0, 8),
             type: interaction.type,
             requestId: interaction.requestId,
+        });
+        this.store.appendMetricEvent({
+            eventType: "interaction_processing",
+            interactionId: interaction.id,
+            traceId: interaction.id,
+            from,
+            to: "pending",
+            reason: "processing_started",
+            status: "pending",
+            source: "x3_worker",
+            backlog: this.store.getInteractionStats().pending,
+            payload: JSON.stringify({
+                source: "x3_processor",
+                interactionType: interaction.type,
+                requestId: interaction.requestId,
+            }),
         });
 
         const evaluation = await this.evaluator.evaluate(interaction);
@@ -42,7 +62,26 @@ export class InteractionProcessor {
             interaction: interaction.id.slice(0, 8),
             route: result.route,
             status: result.interaction.status,
-            reportTask: result.reportTask ? result.reportTask.id.slice(0, 8) : null,
+            reportTask: result.reportTask
+                ? result.reportTask.id.slice(0, 8)
+                : null,
+        });
+        this.store.appendMetricEvent({
+            eventType: "interaction_state_transition",
+            interactionId: interaction.id,
+            traceId: interaction.id,
+            from,
+            to: result.interaction.status,
+            reason: `respond_${result.route}`,
+            status: result.interaction.status,
+            source: "x3_worker",
+            backlog: this.store.getInteractionStats().pending,
+            payload: JSON.stringify({
+                source: "x3_processor",
+                route: result.route,
+                status: result.interaction.status,
+                answer: result.interaction.answer,
+            }),
         });
 
         return result;

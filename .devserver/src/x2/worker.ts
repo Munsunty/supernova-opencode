@@ -209,6 +209,27 @@ function classifyError(task: Task): string | null {
     return "unknown";
 }
 
+function appendReadinessMetric(
+    store: Store,
+    traceId: string,
+    status: "healthy" | "unhealthy",
+    reason: string,
+    phase: "check_started" | "retry" | "check_succeeded" | "check_failed",
+    details?: Record<string, string | number | boolean | null>,
+) {
+    store.appendMetricEvent({
+        eventType: "readiness_check",
+        traceId,
+        status,
+        source: "x2_worker",
+        reason,
+        payload: JSON.stringify({
+            phase,
+            ...details,
+        }),
+    });
+}
+
 function logObservability(task: Task, queue: Queue, store: Store) {
     const stats = queue.getStats();
     const durationMs = taskDurationMs(task);
@@ -226,9 +247,18 @@ function logObservability(task: Task, queue: Queue, store: Store) {
         taskId: task.id,
         taskType: task.type,
         status: task.status,
+        traceId: task.id,
+        source: task.source,
         durationMs,
         backlog: stats.pending,
         errorClass,
+        payload: JSON.stringify({
+            source: "x2_worker",
+            type: task.type,
+            sourceType: task.source,
+            status: task.status,
+            attempts: task.attempts,
+        }),
     });
 }
 
@@ -291,11 +321,23 @@ async function main() {
         logger.warn("stale_running_recovered", { recovered });
         store.appendMetricEvent({
             eventType: "stale_recovery",
+            traceId: "x2_worker_stale_recovery",
+            status: "failed",
+            source: "x2_worker",
             payload: JSON.stringify({ recovered }),
+            reason: "stale_running_recovered",
             backlog: store.getStats().pending,
         });
     }
 
+    const readinessTraceId = `x2_worker_readiness_${Date.now()}`;
+    appendReadinessMetric(
+        store,
+        readinessTraceId,
+        "unhealthy",
+        "readiness_check_started",
+        "check_started",
+    );
     try {
         const health = await retryAsync(() => server.health(), {
             attempts: 2,
@@ -310,15 +352,49 @@ async function main() {
                     nextDelayMs,
                     error: message,
                 });
+                appendReadinessMetric(
+                    store,
+                    readinessTraceId,
+                    "unhealthy",
+                    "opencode_health_retry",
+                    "retry",
+                    {
+                        attempt,
+                        maxAttempts,
+                        nextDelayMs,
+                        error: message,
+                    },
+                );
             },
         });
         logger.info("opencode_health", {
             healthy: health.healthy,
             version: health.version,
         });
+        appendReadinessMetric(
+            store,
+            readinessTraceId,
+            health.healthy ? "healthy" : "unhealthy",
+            "opencode_health_succeeded",
+            "check_succeeded",
+            {
+                healthy: health.healthy,
+                version: health.version,
+            },
+        );
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         logger.warn("opencode_health_failed", { error: message });
+        appendReadinessMetric(
+            store,
+            readinessTraceId,
+            "unhealthy",
+            "opencode_health_failed",
+            "check_failed",
+            {
+                error: message,
+            },
+        );
     }
 
     if (options.enqueuePrompt) {

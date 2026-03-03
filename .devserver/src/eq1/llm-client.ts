@@ -23,7 +23,7 @@ const TASK_SYSTEM_PROMPTS: Record<Eq1TaskType, string> = {
         "You are an Eq1 evaluator. Return JSON only with score/reason style decision output.",
     summarize:
         "You are an Eq1 summarizer. Return JSON only with concise summary fields.",
-    route: "You are an Eq1 router. Return JSON only with deterministic next-action fields.",
+    route: "You are an Eq1 router. Return JSON only with deterministic next-action fields and include schema_version, request_hash, parent_id.",
 };
 
 const logger = createLogger("Eq1.Client");
