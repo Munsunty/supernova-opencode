@@ -4,6 +4,7 @@ cache/
 opencode.runtime.json
 opencode.json
 auth.json
+run-sync/auth*.json
 
 node_modules/
 bun.lock

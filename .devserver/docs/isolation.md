@@ -20,9 +20,9 @@
 ~/.cache/opencode/          →    /srv/opencode/cache                   → named volume (VOLUME_CACHE)
 opencode.json               →    /srv/opencode/config/opencode.json    → 시작 시 생성 (template+generator)
 oh-my-opencode config       →    /srv/opencode/config/oh-my-opencode.jsonc
-                               (seed import)                           → `.devserver/oh-my-opencode.jsonc` read-only seed
+                               (seed import)                           → `.devserver/run-sync/oh-my-opencode.jsonc` read-only seed
 auth.json                   →    /srv/opencode/data/opencode/auth.json
-                               (seed import)                           → `.devserver/opencode/auth.json` read-only seed
+                               (seed import)                           → `.devserver/run-sync/auth.json` read-only seed
 ```
 
 ### 워크스페이스 마운트 정책
@@ -59,6 +59,7 @@ auth.json                   →    /srv/opencode/data/opencode/auth.json
 |----------|--------|------|
 | `X_OC_PODMAN_EXCLUDE_DEVSERVER` | `1` | `/workspace/project/.devserver` 마스킹 활성화 |
 | `X_OC_PODMAN_DEVSERVER_MASK_VOLUME` | `${VOLUME_PREFIX}_devserver_mask` | `.devserver` 마스크용 named volume |
+| `X_OC_PODMAN_RUN_SYNC_DIR` | `.devserver/run-sync` | seed 파일 디렉터리(auth/OmO) |
 | `X_OC_PODMAN_AUTH_IMPORT_MODE` | `always` | auth seed import 모드(`always/if-missing/off`) |
 | `X_OC_PODMAN_OMO_CONFIG_IMPORT_MODE` | `always` | OmO config seed import 모드(`always/if-missing/off`) |
 | `X_OC_PODMAN_FORCE_KILL_PORTS` | `0` | 포트 충돌 시 자동 kill 여부 |
@@ -86,7 +87,7 @@ auth.json                   →    /srv/opencode/data/opencode/auth.json
 ### 부분 공유 항목
 
 - `/workspace/project` 소스 트리 전체(코드 변경 반영 목적)
-- seed 파일 2종(`auth.json`, `oh-my-opencode.jsonc`)은 read-only mount 후 런타임 경로로 동기화
+- seed 파일 2종(`run-sync/auth.json`, `run-sync/oh-my-opencode.jsonc`)은 read-only mount 후 런타임 경로로 동기화
 
 ### 격리되지 않는 항목
 

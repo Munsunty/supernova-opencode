@@ -15,8 +15,9 @@ DASHBOARD_READY_PATH="${OPENCODE_DASHBOARD_READY_PATH:-/}"
 DASHBOARD_PROXY_HOST="${OPENCODE_DASHBOARD_PROXY_HOST:-0.0.0.0}"
 DASHBOARD_INTERNAL_HOST="${OPENCODE_DASHBOARD_INTERNAL_HOST:-127.0.0.1}"
 WORKSPACE_DIR="${OPENCODE_WORKSPACE:-/workspace/project}"
+DASHBOARD_PROJECT="${OPENCODE_DASHBOARD_PROJECT:-$WORKSPACE_DIR}"
 DASHBOARD_AUTO_ADD_PROJECT="${OPENCODE_DASHBOARD_AUTO_ADD_PROJECT:-1}"
-DASHBOARD_PROJECT_NAME="${OPENCODE_DASHBOARD_PROJECT_NAME:-$(basename "$WORKSPACE_DIR")}"
+DASHBOARD_PROJECT_NAME="${OPENCODE_DASHBOARD_PROJECT_NAME:-$(basename "$DASHBOARD_PROJECT")}"
 OPENCODE_AUTH_IMPORT_PATH="${OPENCODE_AUTH_IMPORT_PATH:-}"
 OPENCODE_AUTH_FILE="${OPENCODE_AUTH_FILE:-$XDG_DATA_HOME/opencode/auth.json}"
 OPENCODE_AUTH_IMPORT_MODE="${OPENCODE_AUTH_IMPORT_MODE:-always}"
@@ -96,20 +97,20 @@ ensure_dashboard_project_tracked() {
     return 0
   fi
 
-  if [ ! -d "$WORKSPACE_DIR" ]; then
-    echo "WARN: dashboard auto-add skipped (workspace missing): $WORKSPACE_DIR"
+  if [ ! -d "$DASHBOARD_PROJECT" ]; then
+    echo "WARN: dashboard auto-add skipped (project path missing): $DASHBOARD_PROJECT"
     return 0
   fi
 
   (
-    cd "$WORKSPACE_DIR"
+    cd "$DASHBOARD_PROJECT"
     "$DASHBOARD_BIN" "$DASHBOARD_PACKAGE" add --name "$DASHBOARD_PROJECT_NAME"
   ) >/dev/null 2>&1 || {
-    echo "WARN: dashboard auto-add failed for $WORKSPACE_DIR"
+    echo "WARN: dashboard auto-add failed for $DASHBOARD_PROJECT"
     return 0
   }
 
-  echo "Dashboard project tracked: $WORKSPACE_DIR (name=$DASHBOARD_PROJECT_NAME)"
+  echo "Dashboard project tracked: $DASHBOARD_PROJECT (name=$DASHBOARD_PROJECT_NAME)"
 }
 
 if [ -n "$OPENCODE_CONFIG_CONTENT" ]; then
@@ -141,6 +142,14 @@ fi
 
 sync_omo_config_file
 sync_auth_file
+
+# Keep process cwd anchored to workspace so OpenCode/Dashboard
+# derive project context from /workspace/project consistently.
+if [ -d "$WORKSPACE_DIR" ]; then
+  cd "$WORKSPACE_DIR"
+else
+  echo "WARN: workspace directory missing for cwd: $WORKSPACE_DIR"
+fi
 
 echo "=== OpenCode Podman Testbed ==="
 echo "Config: $OPENCODE_CONFIG"
@@ -290,9 +299,6 @@ run_readiness_checks() {
 trap cleanup EXIT INT TERM
 
 if [ "$DASHBOARD_ENABLED" = "1" ]; then
-  DASHBOARD_PROJECT="${OPENCODE_DASHBOARD_PROJECT:-${OPENCODE_WORKSPACE:-/workspace/project}}"
-  WORKSPACE_DIR="$DASHBOARD_PROJECT"
-
   ensure_dashboard_project_tracked
   echo "Starting dashboard for project: $DASHBOARD_PROJECT"
   "$DASHBOARD_BIN" "$DASHBOARD_PACKAGE" --project "$DASHBOARD_PROJECT" --port "$DASHBOARD_INTERNAL_PORT" &

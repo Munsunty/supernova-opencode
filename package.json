@@ -12,6 +12,8 @@
   "scripts": {
     "dev": ".devserver/dev-up.sh",
     "dev:podman": ".devserver/dev-up.sh",
+    "dev:build": ".devserver/dev-up.sh --build-only",
+    "dev:run": ".devserver/dev-up.sh --run-only",
     "dev:doctor": ".devserver/dev-doctor.sh",
     "dev:smoke": ".devserver/dev-smoke.sh",
     "dashboard": "bunx oh-my-opencode-dashboard@latest",

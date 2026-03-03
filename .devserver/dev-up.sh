@@ -5,8 +5,39 @@
 set -euo pipefail
 
 DEVSERVER_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_DIR="$(cd "$DEVSERVER_DIR/.." && pwd)"
 PODMAN_DOCKERFILE="$DEVSERVER_DIR/dockerfile"
+ENV_FILE="$DEVSERVER_DIR/.env"
+
+if [ -f "$ENV_FILE" ]; then
+  set -a
+  # shellcheck disable=SC1091
+  . "$ENV_FILE"
+  set +a
+fi
+
+PROJECT_DIR_INPUT="${X_OC_PROJECT_DIR:-$DEVSERVER_DIR/..}"
+if [ ! -d "$PROJECT_DIR_INPUT" ]; then
+  echo "ERROR: project directory not found: $PROJECT_DIR_INPUT"
+  echo "Hint: set X_OC_PROJECT_DIR to the repo root that contains .devserver"
+  exit 1
+fi
+PROJECT_DIR="$(cd "$PROJECT_DIR_INPUT" && pwd)"
+
+MODE="up"
+if [ "${1:-}" = "--build-only" ]; then
+  MODE="build-only"
+elif [ "${1:-}" = "--run-only" ]; then
+  MODE="run-only"
+elif [ -n "${1:-}" ] && [ "${1:-}" != "--up" ]; then
+  echo "ERROR: unknown option: $1"
+  echo "Usage: $0 [--up|--build-only|--run-only]"
+  exit 1
+fi
+if [ "$#" -gt 1 ]; then
+  echo "ERROR: too many arguments"
+  echo "Usage: $0 [--up|--build-only|--run-only]"
+  exit 1
+fi
 
 if ! command -v podman >/dev/null 2>&1; then
   echo "ERROR: podman command not found"
@@ -116,6 +147,7 @@ ensure_port_available() {
 }
 
 echo "=== OpenCode dev-up (podman-only) ==="
+echo "MODE:          $MODE"
 echo "PROJECT_DIR:   $PROJECT_DIR"
 echo "DEVSERVER_DIR: $DEVSERVER_DIR"
 echo "====================================="
@@ -156,16 +188,27 @@ FORCE_KILL_PORTS="${X_OC_PODMAN_FORCE_KILL_PORTS:-0}"
 USE_TTY="${X_OC_PODMAN_TTY:-1}"
 WARN_PROVIDER_KEYS="${X_OC_WARN_PROVIDER_KEYS:-0}"
 EXCLUDE_DEVSERVER="${X_OC_PODMAN_EXCLUDE_DEVSERVER:-1}"
+RUN_SYNC_DIR="${X_OC_PODMAN_RUN_SYNC_DIR:-$DEVSERVER_DIR/run-sync}"
 AUTH_IMPORT_MODE="${X_OC_PODMAN_AUTH_IMPORT_MODE:-always}"
-AUTH_IMPORT_SOURCE_HOST="${X_OC_PODMAN_AUTH_SOURCE_HOST:-$DEVSERVER_DIR/opencode/auth.json}"
+AUTH_IMPORT_SOURCE_HOST="${X_OC_PODMAN_AUTH_SOURCE_HOST:-$RUN_SYNC_DIR/auth.json}"
 OMO_CONFIG_IMPORT_MODE="${X_OC_PODMAN_OMO_CONFIG_IMPORT_MODE:-always}"
-OMO_CONFIG_SOURCE_HOST="${X_OC_PODMAN_OMO_CONFIG_SOURCE_HOST:-$DEVSERVER_DIR/oh-my-opencode.jsonc}"
+OMO_CONFIG_SOURCE_HOST="${X_OC_PODMAN_OMO_CONFIG_SOURCE_HOST:-$RUN_SYNC_DIR/oh-my-opencode.jsonc}"
+
+# Backward compatibility: if run-sync seed files are not present,
+# use legacy locations when available.
+if [ -z "${X_OC_PODMAN_AUTH_SOURCE_HOST:-}" ] && [ ! -f "$AUTH_IMPORT_SOURCE_HOST" ] && [ -f "$DEVSERVER_DIR/opencode/auth.json" ]; then
+  AUTH_IMPORT_SOURCE_HOST="$DEVSERVER_DIR/opencode/auth.json"
+fi
+if [ -z "${X_OC_PODMAN_OMO_CONFIG_SOURCE_HOST:-}" ] && [ ! -f "$OMO_CONFIG_SOURCE_HOST" ] && [ -f "$DEVSERVER_DIR/oh-my-opencode.jsonc" ]; then
+  OMO_CONFIG_SOURCE_HOST="$DEVSERVER_DIR/oh-my-opencode.jsonc"
+fi
+
 if [ "$EXCLUDE_DEVSERVER" = "1" ]; then
   AUTH_IMPORT_SOURCE_CONTAINER="${X_OC_PODMAN_AUTH_SOURCE_CONTAINER:-/run/opencode-seed/auth.json}"
   OMO_CONFIG_SOURCE_CONTAINER="${X_OC_PODMAN_OMO_CONFIG_SOURCE_CONTAINER:-/run/opencode-seed/oh-my-opencode.jsonc}"
 else
-  AUTH_IMPORT_SOURCE_CONTAINER="${X_OC_PODMAN_AUTH_SOURCE_CONTAINER:-/workspace/project/.devserver/opencode/auth.json}"
-  OMO_CONFIG_SOURCE_CONTAINER="${X_OC_PODMAN_OMO_CONFIG_SOURCE_CONTAINER:-/workspace/project/.devserver/oh-my-opencode.jsonc}"
+  AUTH_IMPORT_SOURCE_CONTAINER="${X_OC_PODMAN_AUTH_SOURCE_CONTAINER:-/workspace/project/.devserver/run-sync/auth.json}"
+  OMO_CONFIG_SOURCE_CONTAINER="${X_OC_PODMAN_OMO_CONFIG_SOURCE_CONTAINER:-/workspace/project/.devserver/run-sync/oh-my-opencode.jsonc}"
 fi
 _default_mount_label="Z"
 [ "$(uname)" = "Darwin" ] && _default_mount_label=""
@@ -181,28 +224,33 @@ export XDG_DATA_HOME="$DEVSERVER_DIR/data"
 export XDG_CACHE_HOME="$DEVSERVER_DIR/cache"
 export OPENCODE_CONFIG_DIR="$DEVSERVER_DIR"
 
-# Load local env file for worker/provider keys.
-if [ -f "$DEVSERVER_DIR/.env" ]; then
-  set -a
-  # shellcheck disable=SC1091
-  . "$DEVSERVER_DIR/.env"
-  set +a
-fi
-
 print_env_warnings
 
-# remove previous managed container first to free mapped ports safely
-podman rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+if [ "$MODE" != "build-only" ]; then
+  # remove previous managed container first to free mapped ports safely
+  podman rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
 
-ensure_port_available "$HOST_PORT"
-if [ "$DASHBOARD_ENABLED" = "1" ]; then
-  ensure_port_available "$DASHBOARD_HOST_PORT"
-  if [ "$EXPOSE_DASHBOARD_INTERNAL" = "1" ]; then
-    ensure_port_available "$DASHBOARD_INTERNAL_HOST_PORT"
+  ensure_port_available "$HOST_PORT"
+  if [ "$DASHBOARD_ENABLED" = "1" ]; then
+    ensure_port_available "$DASHBOARD_HOST_PORT"
+    if [ "$EXPOSE_DASHBOARD_INTERNAL" = "1" ]; then
+      ensure_port_available "$DASHBOARD_INTERNAL_HOST_PORT"
+    fi
   fi
 fi
 
-podman build -t "$IMAGE_NAME" -f "$PODMAN_DOCKERFILE" "$DEVSERVER_DIR"
+if [ "$MODE" != "run-only" ]; then
+  podman build -t "$IMAGE_NAME" -f "$PODMAN_DOCKERFILE" "$DEVSERVER_DIR"
+  if [ "$MODE" = "build-only" ]; then
+    echo "Build complete: $IMAGE_NAME"
+    exit 0
+  fi
+elif ! podman image exists "$IMAGE_NAME"; then
+  echo "ERROR: image not found: $IMAGE_NAME"
+  echo "Recovery:"
+  echo "  bun run dev:build"
+  exit 1
+fi
 
 PODMAN_RUN_ARGS=(
   --rm
@@ -212,6 +260,7 @@ PODMAN_RUN_ARGS=(
   -e OPENCODE_PORT="$CONTAINER_OPENCODE_PORT"
   -e OPENCODE_HOSTNAME=0.0.0.0
   -e OPENCODE_WORKSPACE=/workspace/project
+  -e OPENCODE_DASHBOARD_PROJECT=/workspace/project
   -e OPENCODE_DASHBOARD_ENABLED="$DASHBOARD_ENABLED"
   -e OPENCODE_DASHBOARD_PORT="$CONTAINER_DASHBOARD_PORT"
   -e OPENCODE_DASHBOARD_PROXY_ENABLED="$DASHBOARD_PROXY_ENABLED"
@@ -261,8 +310,8 @@ if [ "$DASHBOARD_ENABLED" = "1" ]; then
     PODMAN_RUN_ARGS+=( -p "$DASHBOARD_INTERNAL_HOST_PORT:$DASHBOARD_INTERNAL_PORT" )
   fi
 fi
-if [ -f "$DEVSERVER_DIR/.env" ]; then
-  PODMAN_RUN_ARGS+=(--env-file "$DEVSERVER_DIR/.env")
+if [ -f "$ENV_FILE" ]; then
+  PODMAN_RUN_ARGS+=(--env-file "$ENV_FILE")
 fi
 if [ -n "${OPENCODE_SERVER_PASSWORD:-}" ]; then
   PODMAN_RUN_ARGS+=(-e "OPENCODE_SERVER_PASSWORD=$OPENCODE_SERVER_PASSWORD")
@@ -271,6 +320,8 @@ fi
 echo "SANDBOX:       podman (enabled)"
 echo "CONTAINER:     $CONTAINER_NAME"
 echo "VOLUMES:       config=$VOLUME_CONFIG data=$VOLUME_DATA cache=$VOLUME_CACHE"
+echo "RUN-SYNC DIR:  $RUN_SYNC_DIR"
+echo "SEED SOURCES:  auth=$AUTH_IMPORT_SOURCE_HOST omo=$OMO_CONFIG_SOURCE_HOST"
 if [ "$EXCLUDE_DEVSERVER" = "1" ]; then
   echo "WORKSPACE:     /workspace/project (.devserver excluded)"
   echo "MASK VOLUME:   $DEVSERVER_MASK_VOLUME -> /workspace/project/.devserver"

@@ -16,7 +16,8 @@ opencode-supernova/
     ├── dev-doctor.sh                  ← Podman 사전 진단 스크립트
     ├── dev-smoke.sh                   ← 기동/ready/정리 스모크 검증 스크립트
     ├── opencode.json                  ← OpenCode 메인 설정
-    ├── oh-my-opencode.jsonc           ← OmO 설정
+    ├── run-sync/
+    │   └── oh-my-opencode.jsonc       ← OmO seed 설정
     ├── opencode-server-wrapper.ts     ← X_oc wrapper (W₂/W₃ + L'_wrapper)
     ├── dashboard-screenshot.ts        ← dashboard 캡처 POC
     │

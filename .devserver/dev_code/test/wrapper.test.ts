@@ -172,6 +172,28 @@ describe("OpenCode Server Wrapper", () => {
     expect(result.parts.length).toBeGreaterThan(0);
   }, 60_000);
 
+  test("scenario: shell command result (pwd, ls ., create helloworld.txt)", async () => {
+    const session = await server.createSession("scenario-pwd-ls-helloworld");
+
+    try {
+      const shellResult = await server.shell(
+        session.id,
+        "pwd && ls . && printf 'hello world\\n' > helloworld.txt && ls .",
+      );
+      const shellText = JSON.stringify(shellResult);
+      console.log(shellText);
+      expect(shellText).toContain("/workspace/project");
+      expect(shellText).toContain("helloworld.txt");
+
+      const file = await server.readFile("helloworld.txt");
+      const fileText = typeof file === "string" ? file : JSON.stringify(file);
+      expect(fileText).toContain("hello world");
+    } finally {
+      await server.shell(session.id, "rm -f helloworld.txt").catch(() => {});
+      await server.deleteSession(session.id).catch(() => {});
+    }
+  }, 120_000);
+
   // ─── Scenario: 세션 라이프사이클 ──────────────────────────────
 
   test("scenario: create → prompt → messages → diff → todos → delete", async () => {

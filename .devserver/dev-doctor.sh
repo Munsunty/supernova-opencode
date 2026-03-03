@@ -2,7 +2,22 @@
 set -euo pipefail
 
 DEVSERVER_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_DIR="$(cd "$DEVSERVER_DIR/.." && pwd)"
+ENV_FILE="$DEVSERVER_DIR/.env"
+
+if [ -f "$ENV_FILE" ]; then
+  set -a
+  # shellcheck disable=SC1091
+  . "$ENV_FILE"
+  set +a
+fi
+
+PROJECT_DIR_INPUT="${X_OC_PROJECT_DIR:-$DEVSERVER_DIR/..}"
+if [ ! -d "$PROJECT_DIR_INPUT" ]; then
+  echo "ERROR: project directory not found: $PROJECT_DIR_INPUT"
+  echo "Hint: set X_OC_PROJECT_DIR to the repo root that contains .devserver"
+  exit 1
+fi
+PROJECT_DIR="$(cd "$PROJECT_DIR_INPUT" && pwd)"
 
 HOST_PORT="${X_OC_PODMAN_HOST_PORT:-4996}"
 DASHBOARD_ENABLED="${X_OC_PODMAN_DASHBOARD_ENABLED:-1}"
@@ -112,14 +127,10 @@ check_file "$DEVSERVER_DIR/package.json"
 check_file "$DEVSERVER_DIR/opencode.json"
 
 echo "-- config warnings --"
-if [ ! -f "$DEVSERVER_DIR/.env" ]; then
-  warn "$DEVSERVER_DIR/.env not found"
+if [ ! -f "$ENV_FILE" ]; then
+  warn "$ENV_FILE not found"
 else
   pass ".env present"
-  set -a
-  # shellcheck disable=SC1091
-  . "$DEVSERVER_DIR/.env"
-  set +a
 fi
 
 if [ -z "${OPENCODE_SERVER_PASSWORD:-}" ]; then
