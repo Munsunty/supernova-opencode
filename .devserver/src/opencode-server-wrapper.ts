@@ -93,6 +93,21 @@ export interface PromptOptions {
   tools?: Record<string, boolean>;
 }
 
+const AGENT_ALIASES: Record<string, string> = {
+  build: "OpenCode-Builder",
+  opencodebuilder: "OpenCode-Builder",
+  "opencode-builder": "OpenCode-Builder",
+  "open-code-builder": "OpenCode-Builder",
+};
+
+function resolveAgent(agent?: string): string | undefined {
+  if (!agent) return undefined;
+  const normalized = agent.trim();
+  if (!normalized) return undefined;
+  const lowered = normalized.toLowerCase();
+  return AGENT_ALIASES[lowered] ?? normalized;
+}
+
 export interface RunOptions extends PromptOptions {
   title?: string;
   deleteAfter?: boolean;
@@ -219,13 +234,14 @@ export class OpenCodeServer {
     options: PromptOptions = {},
   ): Promise<PromptResult> {
     const noReply = options.noReply ?? false;
+    const agent = resolveAgent(options.agent);
     const result = await unwrap(
       this.client.session.prompt({
         path: { id: sessionId },
         body: {
           parts: [{ type: "text", text }],
           ...(options.model && { model: options.model }),
-          ...(options.agent && { agent: options.agent }),
+          ...(agent && { agent }),
           noReply,
           ...(options.system && { system: options.system }),
           ...(options.tools && { tools: options.tools }),
@@ -264,13 +280,14 @@ export class OpenCodeServer {
     options: PromptOptions = {},
   ): Promise<void> {
     const noReply = options.noReply ?? false;
+    const agent = resolveAgent(options.agent);
     await unwrap(
       this.client.session.promptAsync({
         path: { id: sessionId },
         body: {
           parts: [{ type: "text", text }],
           ...(options.model && { model: options.model }),
-          ...(options.agent && { agent: options.agent }),
+          ...(agent && { agent }),
           noReply,
           ...(options.system && { system: options.system }),
           ...(options.tools && { tools: options.tools }),
@@ -305,13 +322,13 @@ export class OpenCodeServer {
     // format은 서버에서 지원하지만 SDK 타입에 아직 미반영
     const body = {
       parts: [{ type: "text" as const, text }],
+      ...(promptOpts.agent && { agent: resolveAgent(promptOpts.agent) }),
       format: {
         type: "json_schema" as const,
         schema: schema as Record<string, unknown>,
         retryCount,
       },
       ...(promptOpts.model && { model: promptOpts.model }),
-      ...(promptOpts.agent && { agent: promptOpts.agent }),
       ...(promptOpts.system && { system: promptOpts.system }),
       ...(promptOpts.tools && { tools: promptOpts.tools }),
     };
