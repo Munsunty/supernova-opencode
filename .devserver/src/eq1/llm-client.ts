@@ -14,6 +14,7 @@ export interface Eq1ClientOptions {
     retryBaseDelayMs?: number;
     retryMaxDelayMs?: number;
     timeoutMs?: number;
+    fallbackProvider?: EqProvider | null;
 }
 
 const TASK_SYSTEM_PROMPTS: Record<Eq1TaskType, string> = {
@@ -91,6 +92,7 @@ export function buildEq1Messages(request: Eq1RunRequest): EqPromptMessage[] {
 
 export class Eq1Client {
     private provider: EqProvider;
+    private fallbackProvider: EqProvider | null;
     private retryAttempts: number;
     private retryBaseDelayMs: number;
     private retryMaxDelayMs: number;
@@ -98,6 +100,7 @@ export class Eq1Client {
 
     constructor(provider: EqProvider, options: Eq1ClientOptions = {}) {
         this.provider = provider;
+        this.fallbackProvider = options.fallbackProvider ?? null;
         // Eq1는 task-level 재시도와 중첩을 피하기 위해 provider-level retry를 최소 기본값(1)으로 둔다.
         this.retryAttempts = Math.max(1, options.retryAttempts ?? 1);
         this.retryBaseDelayMs = options.retryBaseDelayMs ?? 300;
@@ -105,7 +108,8 @@ export class Eq1Client {
         this.timeoutMs = options.timeoutMs ?? 20_000;
     }
 
-    async run<TOutput = Record<string, unknown>>(
+    private async executeWithProvider<TOutput = Record<string, unknown>>(
+        provider: EqProvider,
         request: Eq1RunRequest,
     ): Promise<Eq1RunResult<TOutput>> {
         const startedAt = Date.now();
@@ -119,7 +123,7 @@ export class Eq1Client {
         const response = await retryAsync(
             async (attempt) => {
                 attempts = attempt;
-                return this.provider.complete(completionRequest);
+                return provider.complete(completionRequest);
             },
             {
                 attempts: this.retryAttempts,
@@ -160,6 +164,32 @@ export class Eq1Client {
             usage: response.usage ?? null,
             latencyMs,
         };
+    }
+
+    async run<TOutput = Record<string, unknown>>(
+        request: Eq1RunRequest,
+    ): Promise<Eq1RunResult<TOutput>> {
+        try {
+            return await this.executeWithProvider<TOutput>(
+                this.provider,
+                request,
+            );
+        } catch (primaryError) {
+            if (!this.fallbackProvider) throw primaryError;
+
+            const message =
+                primaryError instanceof Error
+                    ? primaryError.message
+                    : String(primaryError);
+            logger.warn("eq1_fallback_activated", {
+                type: request.type,
+                reason: message,
+            });
+            return this.executeWithProvider<TOutput>(
+                this.fallbackProvider,
+                request,
+            );
+        }
     }
 
     classify<TOutput = Record<string, unknown>>(

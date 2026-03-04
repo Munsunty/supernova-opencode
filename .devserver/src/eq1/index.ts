@@ -7,4 +7,5 @@ export * from "./providers/env";
 export * from "./providers/openai-compatible";
 export * from "./providers/groq";
 export * from "./providers/cerebras";
+export * from "./providers/opencode-internal";
 export * from "./providers/factory";

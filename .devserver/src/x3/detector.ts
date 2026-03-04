@@ -8,11 +8,25 @@ interface DetectorServer {
     listQuestions(): Promise<unknown[]>;
 }
 
+interface PollSourceResult {
+    values: unknown[];
+    error: string | null;
+}
+
 export interface DetectorPollStats {
     seen: number;
     enqueued: number;
     duplicate: number;
     invalid: number;
+}
+
+function isAllZeroStats(stats: DetectorPollStats): boolean {
+    return (
+        stats.seen === 0 &&
+        stats.enqueued === 0 &&
+        stats.duplicate === 0 &&
+        stats.invalid === 0
+    );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -92,17 +106,19 @@ function payloadToString(value: unknown): string {
 export class InteractionDetector {
     private store: Store;
     private server: DetectorServer;
+    private lastFailureSignature: string | null;
 
     constructor(store: Store, server: DetectorServer) {
         this.store = store;
         this.server = server;
+        this.lastFailureSignature = null;
     }
 
     async pollOnce(): Promise<DetectorPollStats> {
         const traceId = `x3_detector_${Date.now()}`;
         const [permissions, questions] = await Promise.all([
-            this.server.listPermissions(),
-            this.server.listQuestions(),
+            this.pollSource("permission", () => this.server.listPermissions()),
+            this.pollSource("question", () => this.server.listQuestions()),
         ]);
         const stats: DetectorPollStats = {
             seen: 0,
@@ -111,15 +127,18 @@ export class InteractionDetector {
             invalid: 0,
         };
 
-        this.consumeList("permission", permissions, stats);
-        this.consumeList("question", questions, stats);
+        this.consumeList("permission", permissions.values, stats);
+        this.consumeList("question", questions.values, stats);
+        const pollPartial = Boolean(permissions.error || questions.error);
+        this.logPollHealth(permissions.error, questions.error, stats);
+
         this.store.appendMetricEvent({
             eventType: "interaction_poll",
             traceId,
             interactionId: null,
             source: "x3_worker",
-            status: "healthy",
-            reason: "poll_done",
+            status: pollPartial ? "unhealthy" : "healthy",
+            reason: pollPartial ? "poll_partial" : "poll_done",
             payload: JSON.stringify({
                 source: "x3_detector",
                 type: "poll_once",
@@ -127,9 +146,15 @@ export class InteractionDetector {
                 enqueued: stats.enqueued,
                 duplicate: stats.duplicate,
                 invalid: stats.invalid,
+                permission_error: permissions.error,
+                question_error: questions.error,
             }),
         });
-        logger.info("detector_poll_done", stats);
+        if (isAllZeroStats(stats)) {
+            logger.debug("detector_poll_done", stats);
+        } else {
+            logger.info("detector_poll_done", stats);
+        }
         return stats;
     }
 
@@ -173,5 +198,53 @@ export class InteractionDetector {
             }
             stats.duplicate += 1;
         }
+    }
+
+    private async pollSource(
+        source: InteractionType,
+        fn: () => Promise<unknown[]>,
+    ): Promise<PollSourceResult> {
+        try {
+            const values = await fn();
+            return { values, error: null };
+        } catch (error) {
+            const message =
+                error instanceof Error ? error.message : String(error);
+            return {
+                values: [],
+                error: `${source}:${message}`,
+            };
+        }
+    }
+
+    private logPollHealth(
+        permissionError: string | null,
+        questionError: string | null,
+        stats: DetectorPollStats,
+    ): void {
+        const signature = `${permissionError ?? "ok"}|${questionError ?? "ok"}`;
+        if (!permissionError && !questionError) {
+            if (this.lastFailureSignature !== null) {
+                logger.info("detector_poll_recovered", stats);
+            }
+            this.lastFailureSignature = null;
+            return;
+        }
+
+        if (this.lastFailureSignature !== signature) {
+            logger.warn("detector_poll_partial", {
+                permissionError,
+                questionError,
+                ...stats,
+            });
+            this.lastFailureSignature = signature;
+            return;
+        }
+
+        logger.debug("detector_poll_partial_repeat", {
+            permissionError,
+            questionError,
+            ...stats,
+        });
     }
 }

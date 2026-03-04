@@ -8,12 +8,16 @@ import { Store } from "../../src/x2/store";
 class FakeInteractionServer {
     permissions: unknown[] = [];
     questions: unknown[] = [];
+    permissionError: Error | null = null;
+    questionError: Error | null = null;
 
     async listPermissions(): Promise<unknown[]> {
+        if (this.permissionError) throw this.permissionError;
         return this.permissions;
     }
 
     async listQuestions(): Promise<unknown[]> {
+        if (this.questionError) throw this.questionError;
         return this.questions;
     }
 }
@@ -150,6 +154,62 @@ describe("X3 InteractionDetector", () => {
         expect(payload.seen).toBe(2);
         expect(payload.enqueued).toBe(2);
         expect(payload.type).toBe("poll_once");
+
+        store.close();
+    });
+
+    test("pollOnce continues when permission source fails and processes questions", async () => {
+        const store = createStore();
+        const server = new FakeInteractionServer();
+        const detector = new InteractionDetector(store, server);
+
+        server.permissionError = new Error("listPermissions failed: 500");
+        server.questions = [{ requestID: "q-1", sessionID: "ses-2" }];
+
+        const stats = await detector.pollOnce();
+        expect(stats.seen).toBe(1);
+        expect(stats.enqueued).toBe(1);
+        expect(stats.duplicate).toBe(0);
+        expect(stats.invalid).toBe(0);
+
+        const pending = store.listInteractions({ status: "pending" });
+        expect(pending.length).toBe(1);
+        expect(pending[0]?.type).toBe("question");
+        expect(pending[0]?.requestId).toBe("q-1");
+
+        const events = store.listMetricEvents({
+            eventType: "interaction_poll",
+        });
+        expect(events.length).toBe(1);
+        expect(events[0]?.status).toBe("unhealthy");
+        expect(events[0]?.reason).toBe("poll_partial");
+        expect(events[0]?.payload).toContain(
+            "permission:listPermissions failed: 500",
+        );
+
+        store.close();
+    });
+
+    test("pollOnce does not throw when both sources fail", async () => {
+        const store = createStore();
+        const server = new FakeInteractionServer();
+        const detector = new InteractionDetector(store, server);
+
+        server.permissionError = new Error("listPermissions failed: 500");
+        server.questionError = new Error("listQuestions failed: 500");
+
+        const stats = await detector.pollOnce();
+        expect(stats.seen).toBe(0);
+        expect(stats.enqueued).toBe(0);
+        expect(stats.duplicate).toBe(0);
+        expect(stats.invalid).toBe(0);
+
+        const events = store.listMetricEvents({
+            eventType: "interaction_poll",
+        });
+        expect(events.length).toBe(1);
+        expect(events[0]?.status).toBe("unhealthy");
+        expect(events[0]?.reason).toBe("poll_partial");
 
         store.close();
     });

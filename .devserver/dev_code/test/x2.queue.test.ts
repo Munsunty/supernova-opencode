@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { Queue } from "../../src/x2/queue";
 import { Store } from "../../src/x2/store";
+import { opencodeAgent } from "../../src/utils";
 
 type FakeMessage = {
     info: {
@@ -262,7 +263,13 @@ class FakeServer {
 
 class FakeEq1Client {
     public runCalls = 0;
+    public classifyCalls = 0;
     public throwOnRun = false;
+    public throwOnClassify = false;
+    public classifyOutput: Record<string, unknown> = {
+        route: "simple",
+        reason: "default-simple",
+    };
 
     async run(request: {
         type: "classify" | "evaluate" | "summarize" | "route";
@@ -281,6 +288,35 @@ class FakeEq1Client {
                 reason: `handled: ${request.input}`,
             },
             rawText: JSON.stringify({ action: "auto" }),
+            attempts: 1,
+            provider: "mock-eq1",
+            model: "mock-model",
+            usage: null,
+            latencyMs: 1,
+        };
+    }
+
+    async classify(
+        _input: string,
+        _context?: Record<string, unknown>,
+    ): Promise<{
+        type: "classify";
+        output: Record<string, unknown>;
+        rawText: string;
+        attempts: number;
+        provider: string;
+        model: string | null;
+        usage: null;
+        latencyMs: number;
+    }> {
+        this.classifyCalls++;
+        if (this.throwOnClassify) {
+            throw new Error("eq1 classify failed");
+        }
+        return {
+            type: "classify",
+            output: this.classifyOutput,
+            rawText: JSON.stringify(this.classifyOutput),
             attempts: 1,
             provider: "mock-eq1",
             model: "mock-model",
@@ -398,7 +434,9 @@ describe("X2 Queue", () => {
         const queue = new Queue(store, server as never, {
             maxRetries: 0,
             bypassAgent: "spark",
-            bypassModel: "openai/GPT-5.3-Codex-Spark",
+            x2Dispatcher: opencodeAgent.X2_dispatcher(
+                "openai/GPT-5.3-Codex-Spark",
+            ),
         });
 
         queue.enqueue("spark path");
@@ -425,7 +463,7 @@ describe("X2 Queue", () => {
         const queue = new Queue(store, server as never, {
             maxRetries: 0,
             bypassAgent: "spark",
-            bypassModel: null,
+            x2Dispatcher: opencodeAgent.X2_dispatcher(null),
         });
 
         queue.enqueue("spark path");
@@ -439,6 +477,118 @@ describe("X2 Queue", () => {
             },
         });
         expect(server.lastPromptArgs[0].options).not.toHaveProperty("model");
+
+        store.close();
+    });
+
+    test("dispatchNext routes simple prompt to spark in auto mode", async () => {
+        const store = createStore();
+        const server = new FakeServer();
+        const queue = new Queue(store, server as never, {
+            maxRetries: 0,
+            agentRoutingMode: "auto",
+            simpleAgent: "spark",
+            complexAgent: "sisyphus",
+        });
+
+        queue.enqueue("간단히 상태 알려줘");
+        await queue.dispatchNext();
+
+        expect(server.promptCalls).toBe(1);
+        expect(server.lastPromptArgs[0]).toMatchObject({
+            options: {
+                agent: "spark",
+            },
+        });
+        const running = store.listTasks({ status: "running", limit: 1 })[0];
+        expect(running?.runAgent).toBe("spark");
+
+        store.close();
+    });
+
+    test("dispatchNext routes complex/risk prompt to sisyphus in auto mode", async () => {
+        const store = createStore();
+        const server = new FakeServer();
+        const queue = new Queue(store, server as never, {
+            maxRetries: 0,
+            agentRoutingMode: "auto",
+            simpleAgent: "spark",
+            complexAgent: "sisyphus",
+        });
+
+        queue.enqueue(
+            "이번 변경은 리스크가 크니 롤백 계획까지 포함해 설계해줘",
+        );
+        await queue.dispatchNext();
+
+        expect(server.promptCalls).toBe(1);
+        expect(server.lastPromptArgs[0]).toMatchObject({
+            options: {
+                agent: "sisyphus",
+            },
+        });
+        const running = store.listTasks({ status: "running", limit: 1 })[0];
+        expect(running?.runAgent).toBe("sisyphus");
+
+        store.close();
+    });
+
+    test("dispatchNext prefers eq1 routing decision in auto mode", async () => {
+        const store = createStore();
+        const server = new FakeServer();
+        const eq1Client = new FakeEq1Client();
+        eq1Client.classifyOutput = {
+            route: "complex",
+            reason: "eq1-risk",
+        };
+        const queue = new Queue(store, server as never, {
+            maxRetries: 0,
+            agentRoutingMode: "auto",
+            simpleAgent: "spark",
+            complexAgent: "sisyphus",
+            eq1Client: eq1Client as never,
+        });
+
+        // 휴리스틱만 보면 simple이지만, eq1 판정을 우선 사용한다.
+        queue.enqueue("짧게 답해줘");
+        await queue.dispatchNext();
+
+        expect(eq1Client.classifyCalls).toBe(1);
+        expect(server.promptCalls).toBe(1);
+        expect(server.lastPromptArgs[0]).toMatchObject({
+            options: {
+                agent: "sisyphus",
+            },
+        });
+
+        store.close();
+    });
+
+    test("dispatchNext falls back to heuristic when eq1 routing output is invalid", async () => {
+        const store = createStore();
+        const server = new FakeServer();
+        const eq1Client = new FakeEq1Client();
+        eq1Client.classifyOutput = {
+            unknown: "value",
+        };
+        const queue = new Queue(store, server as never, {
+            maxRetries: 0,
+            agentRoutingMode: "auto",
+            simpleAgent: "spark",
+            complexAgent: "sisyphus",
+            eq1Client: eq1Client as never,
+        });
+
+        queue.enqueue("이번 변경은 리스크가 있어");
+        await queue.dispatchNext();
+
+        expect(eq1Client.classifyCalls).toBe(1);
+        expect(server.promptCalls).toBe(1);
+        expect(server.lastPromptArgs[0]).toMatchObject({
+            options: {
+                agent: "sisyphus",
+            },
+        });
 
         store.close();
     });

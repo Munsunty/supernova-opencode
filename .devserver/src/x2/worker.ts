@@ -9,8 +9,8 @@ import {
 import { Store, type Task, type TaskType } from "./store";
 import { createEq1ClientFromEnv } from "../eq1/create-client";
 import { isEq1TaskType } from "../eq1/task-types";
-import { createLogger } from "../utils/logging";
-import { retryAsync } from "../utils/retry";
+import { createLogger, opencodeAgent, retryAsync } from "../utils";
+import type { AgentRoutingMode } from "./queue";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,6 +21,9 @@ interface WorkerOptions {
     source: string;
     bypassAgent: string | null;
     bypassModel: string | null;
+    agentRoutingMode: AgentRoutingMode;
+    simpleAgent: string | null;
+    complexAgent: string | null;
     summarizerAgent: string | null;
     eventSubscribe: boolean;
     once: boolean;
@@ -43,6 +46,17 @@ function parseOptionalAgent(
         return null;
     }
     return trimmed;
+}
+
+function parseRoutingMode(
+    raw: string | undefined,
+    fallback: AgentRoutingMode,
+): AgentRoutingMode {
+    if (raw === undefined) return fallback;
+    const normalized = raw.trim().toLowerCase();
+    if (normalized === "auto") return "auto";
+    if (normalized === "fixed") return "fixed";
+    return fallback;
 }
 
 const logger = createLogger("X2.Worker");
@@ -93,12 +107,11 @@ function bootstrapEnv() {
 }
 
 function parseBypassModel(raw: string): string {
-    const trimmed = raw.trim();
-    const slashIndex = trimmed.indexOf("/");
-    if (slashIndex <= 0 || slashIndex === trimmed.length - 1) {
+    const normalized = opencodeAgent.X2_normalize_bypass_model(raw);
+    if (!normalized) {
         throw new Error(`Invalid bypass model format: ${raw}`);
     }
-    return trimmed;
+    return normalized;
 }
 
 function parseOptionalBypassModel(raw: string | undefined): string | null {
@@ -188,8 +201,20 @@ function parseArgs(argv: string[]): WorkerOptions {
         enqueuePrompt: null,
         enqueueType: "omo_request",
         source: "cli",
-        bypassAgent: process.env.X2_OMO_BYPASS_AGENT ?? "spark",
+        bypassAgent: parseOptionalAgent(process.env.X2_OMO_BYPASS_AGENT, null),
         bypassModel: parseOptionalBypassModel(process.env.X2_OMO_BYPASS_MODEL),
+        agentRoutingMode: parseRoutingMode(
+            process.env.X2_OMO_AGENT_ROUTING,
+            "auto",
+        ),
+        simpleAgent: parseOptionalAgent(
+            process.env.X2_OMO_SIMPLE_AGENT,
+            "spark",
+        ),
+        complexAgent: parseOptionalAgent(
+            process.env.X2_OMO_COMPLEX_AGENT,
+            "sisyphus",
+        ),
         summarizerAgent: parseOptionalAgent(
             process.env.X2_SUMMARIZER_AGENT,
             "x2-summarizer",
@@ -274,12 +299,33 @@ function parseArgs(argv: string[]): WorkerOptions {
                 if (!next)
                     throw new Error("--bypass-agent requires an agent name");
                 options.bypassAgent = next;
+                options.agentRoutingMode = "fixed";
                 i++;
                 break;
             case "--bypass-model":
                 if (!next)
                     throw new Error("--bypass-model requires a model value");
                 options.bypassModel = parseBypassModel(next);
+                i++;
+                break;
+            case "--agent-routing":
+                if (!next)
+                    throw new Error(
+                        "--agent-routing requires one of: auto | fixed",
+                    );
+                options.agentRoutingMode = parseRoutingMode(next, "auto");
+                i++;
+                break;
+            case "--simple-agent":
+                if (!next)
+                    throw new Error("--simple-agent requires an agent name");
+                options.simpleAgent = parseOptionalAgent(next, null);
+                i++;
+                break;
+            case "--complex-agent":
+                if (!next)
+                    throw new Error("--complex-agent requires an agent name");
+                options.complexAgent = parseOptionalAgent(next, null);
                 i++;
                 break;
             case "--help":
@@ -326,7 +372,10 @@ Options:
   --max-retries <n>      Max retries before failed (default: 1)
   --retry-base-ms <ms>   Retry base delay (default: 3000)
   --retry-max-ms <ms>    Retry max delay cap (default: 60000)
-  --bypass-agent <name>  OMO bypass agent (default: spark)
+  --agent-routing <mode> OMO agent routing mode: auto(eq1-first)|fixed (default: auto)
+  --simple-agent <name>  Agent for simple tasks (default: spark)
+  --complex-agent <name> Agent for complex/risk tasks (default: sisyphus)
+  --bypass-agent <name>  Force fixed OMO agent override (sets routing=fixed)
   --bypass-model <provider/model> OMO bypass model (optional)
   --base-url <url>       OpenCode base URL (default: http://127.0.0.1:4996)
   --help                 Show this help`);
@@ -488,7 +537,10 @@ async function main() {
         retryBaseDelayMs: options.retryBaseMs,
         retryMaxDelayMs: options.retryMaxMs,
         bypassAgent: options.bypassAgent ?? null,
-        bypassModel: options.bypassModel ?? null,
+        x2Dispatcher: opencodeAgent.X2_dispatcher(options.bypassModel ?? null),
+        agentRoutingMode: options.agentRoutingMode,
+        simpleAgent: options.simpleAgent ?? null,
+        complexAgent: options.complexAgent ?? null,
         summarizerAgent: options.summarizerAgent ?? null,
     });
     const router = new Router(createReporter());
@@ -633,6 +685,10 @@ async function main() {
         max_retries: options.maxRetries,
         retry_base_ms: options.retryBaseMs,
         retry_max_ms: options.retryMaxMs,
+        x2_agent_routing: options.agentRoutingMode,
+        x2_simple_agent: options.simpleAgent,
+        x2_complex_agent: options.complexAgent,
+        x2_bypass_agent: options.bypassAgent,
         x2_summarizer_agent: options.summarizerAgent,
         event_subscribe: options.eventSubscribe,
     });

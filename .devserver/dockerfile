@@ -18,6 +18,7 @@ RUN bun install --frozen-lockfile \
 
 COPY src /opt/opencode/src
 COPY opencode.json /opt/opencode/opencode.template.json
+COPY run-sync/templates /opt/opencode/templates
 
 COPY entrypoint.sh /usr/local/bin/opencode-entrypoint
 RUN chmod +x /usr/local/bin/opencode-entrypoint

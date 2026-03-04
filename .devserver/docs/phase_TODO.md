@@ -3,7 +3,7 @@
 *Last Updated: 2026-03-04*
 
 Status: OPEN
-PhaseStamp: PS-20260304-06
+PhaseStamp: PS-20260304-10
 
 ## 목적
 
@@ -71,8 +71,8 @@ PhaseStamp: PS-20260304-06
 - `X2`: 큐/실행 사이클 계층
 - `X3`: interaction 감지/판단/응답 계층
 - `X4`: 요약/라우팅/후속 생성 계층
-- `Sisyphus`: 단순/명확 작업 즉시 실행 모드 [Xoc]
-- `Prometheus`: 복잡/리스크 작업 인터뷰/계획 모드 [Xoc]
+- `Spark`: 단순/명확 작업 즉시 실행 모드 [Xoc]
+- `Sisyphus`: 복잡/리스크 작업 계획/검증 모드 [Xoc]
 
 ### 금지 혼용 표현
 
@@ -82,6 +82,10 @@ PhaseStamp: PS-20260304-06
 
 ## Previous (Confirmed)
 
+- 2026-03-04: `PS-20260304-09` close (`Present` 없음, 다음 phase 후보 선별 대기 상태로 종료)
+- 2026-03-04: `PS-20260304-08` close (`PH-P1-GENESIS-001` 완료, genesis bootstrap 경로/생성 smoke 완료)
+- 2026-03-04: `PS-20260304-07` close (`PH-P1-EQ1-001`, `PH-P1-EQ1-002` 완료, `PH-P1-GENESIS-001` 다음 phase 이관)
+- 2026-03-04: `PS-20260304-06` close (`PH-P1-X2-003`, `PH-P1-X2-004` 완료, X2/X4 summarizer prompt seed 반영 경로 정합화 포함)
 - 2026-03-04: `PS-20260304-05` close (`PH-P1-X1-002`, `PH-P1-X2-002`, `PH-P1-DOCS-002` 완료, summarizer agent runtime 연결 반영)
 - 2026-03-04: `PS-20260304-02` close (`P2` X1/X2 백로그가 미완료 상태로 다음 cycle 대상 유지)
 - 2026-03-04: `PS-20260304-03` close (`P1` X2 완료, `PH-P2-X1-001` 다음 cycle로 보류)
@@ -97,9 +101,9 @@ PhaseStamp: PS-20260304-06
 - 2026-03-04: `PS-20260304-04` close (`PH-P2-X1-001` 완료, `x1` Telegram 인입 파이프라인 적용 확인)
 
 ## Present (Confirmed)
-PS-20260304-06
+PS-20260304-10
 
-- `PH-P1-X2-003` [완료] Telegram 결과 송신을 `monitor(raw)` + `summary(meta)` 2단 포맷으로 분리하고 summary 메시지에 실행/요약 `agent`/`model` 메타 포함
+- 없음 (이번 phase 선별 대기)
 
 ## Next (Variable Phase-Backlog)
 
@@ -144,3 +148,18 @@ PS-20260304-06
 - 2026-03-04: `PS-20260304-05` `PH-P1-DOCS-002` 범위 확장 완료 (`x2-summarizer`/`x4-summarizer` runtime agent 연결 + worker/env 옵션 + 테스트 PASS)
 - 2026-03-04: `PS-20260304-05` phase close 완료 (`temp_TODO.md` archived: `archive/temp_TODO.2026-03-04.PS-20260304-05.20260304-161344.closed.md`)
 - 2026-03-04: `PS-20260304-06` phase 시작 (`PS-20260304-05` 종료 상태를 Previous로 고정, `temp_TODO.md` 신규 오픈 생성)
+- 2026-03-04: `PS-20260304-06` `PH-P1-X2-004` 완료 반영 (`x2` eq1-first auto routing + fallback + `dev-up/.env.example` runtime 설정 연결 + 단위 테스트 PASS)
+- 2026-03-04: `PS-20260304-06` phase close 완료 (`PH-P1-X2-003`, `PH-P1-X2-004` 완료, `temp_TODO.md` archived: `archive/temp_TODO.2026-03-04.PS-20260304-06.20260304-173706.closed.md`)
+- 2026-03-04: `PS-20260304-07` phase 시작 (`PS-20260304-06` 종료 상태를 Previous로 고정, `temp_TODO.md` 신규 오픈 생성)
+- 2026-03-04: `PS-20260304-07` Present 갱신 (`PH-P1-EQ1-001`, `PH-P1-EQ1-002`) 및 `temp_TODO.md` 스냅샷 동기화
+- 2026-03-04: `PS-20260304-07` `PH-P1-EQ1-002` 구현 진행 — internal provider(`opencode_internal`) + fallback chain(`opencode_internal_fallback`) + Eq1Client fallback 경계 + 단위 테스트 PASS, runtime smoke 단계로 전환
+- 2026-03-04: `PS-20260304-07` `PH-P1-EQ1-002` 완료 반영 (runtime smoke 항목은 사용자 요청으로 생략, 코드/단위테스트 완료 기준으로 확정)
+- 2026-03-04: `PS-20260304-07` phase close 완료 (`PH-P1-EQ1-001`, `PH-P1-EQ1-002` 완료, `temp_TODO.md` archived: `archive/temp_TODO.2026-03-04.PS-20260304-07.20260304-190631.closed.md`)
+- 2026-03-04: `PS-20260304-08` phase 시작 (`PS-20260304-07` 종료 상태를 Previous로 고정, `temp_TODO.md` 신규 오픈 생성)
+- 2026-03-04: `PS-20260304-08` Present 갱신 (`PH-P1-GENESIS-001`) 및 `temp_TODO.md` 스냅샷 동기화
+- 2026-03-04: `PS-20260304-08` phase close 완료 (`PH-P1-GENESIS-001` 완료, `temp_TODO.md` archived: `archive/temp_TODO.2026-03-04.PS-20260304-08.20260304-190910.closed.md`)
+- 2026-03-04: `PS-20260304-09` phase 시작 (`PS-20260304-08` 종료 상태를 Previous로 고정, `temp_TODO.md` 신규 오픈 생성)
+- 2026-03-04: `PS-20260304-09` Present 갱신 없음 (다음 후보 선별 대기)
+- 2026-03-04: `PS-20260304-09` phase close 완료 (`Present` 없음, `temp_TODO.md` archived: `archive/temp_TODO.2026-03-04.PS-20260304-09.20260304-191056.closed.md`)
+- 2026-03-04: `PS-20260304-10` phase 시작 (`PS-20260304-09` 종료 상태를 Previous로 고정, `temp_TODO.md` 신규 오픈 생성)
+- 2026-03-04: `PS-20260304-10` Present 갱신 없음 (다음 후보 선별 대기)

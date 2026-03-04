@@ -7,22 +7,19 @@
  * prompt() 직접 대기를 피하고, running 상태를 비차단으로 관측/수렴한다.
  */
 
-import {
-    summarize,
-    formatSummary,
-    extractText,
-    type Summary,
-} from "./summarizer";
+import { summarize, formatSummary, type Summary } from "./summarizer";
 import { Store, type Task, type TaskType } from "./store";
-import { computeBackoffDelay } from "../utils/retry";
 import type { Eq1Client } from "../eq1/llm-client";
 import { isEq1TaskType } from "../eq1/task-types";
 import { createHash } from "node:crypto";
-import { createLogger } from "../utils/logging";
-import { extractTelegramChatIdFromTaskSource } from "../utils/telegram-source";
+import {
+    computeBackoffDelay,
+    createLogger,
+    extractTelegramChatIdFromTaskSource,
+    opencodeAgent,
+} from "../utils";
 import type {
     OpenCodeServer,
-    PromptOptions,
     MessageWithParts,
 } from "../opencode-server-wrapper";
 
@@ -46,6 +43,8 @@ interface TaskEventMessageInfo {
     createdAt: number | null;
 }
 
+export type AgentRoutingMode = "fixed" | "auto";
+
 export interface QueueOptions {
     eq1Client?: Eq1Client | null;
     maxRetries?: number;
@@ -53,8 +52,11 @@ export interface QueueOptions {
     retryMaxDelayMs?: number;
     now?: () => number;
     bypassAgent?: string | null;
-    bypassModel?: string | null;
+    x2Dispatcher?: ReturnType<(typeof opencodeAgent)["X2_dispatcher"]> | null;
     summarizerAgent?: string | null;
+    agentRoutingMode?: AgentRoutingMode;
+    simpleAgent?: string | null;
+    complexAgent?: string | null;
 }
 
 function buildEq1RequestHash(task: Task): string {
@@ -65,33 +67,6 @@ function buildEq1RequestHash(task: Task): string {
         .update("\n")
         .update(task.prompt)
         .digest("hex");
-}
-
-function parsePromptModel(
-    raw: string | null | undefined,
-): PromptOptions["model"] | null {
-    if (typeof raw !== "string") return null;
-    const trimmed = raw.trim();
-    if (!trimmed) return null;
-
-    const splitAt = trimmed.indexOf("/");
-    if (splitAt <= 0 || splitAt === trimmed.length - 1) {
-        return null;
-    }
-
-    const providerID = trimmed.slice(0, splitAt).trim();
-    const modelID = trimmed.slice(splitAt + 1).trim();
-    if (!providerID || !modelID) return null;
-
-    return { providerID, modelID };
-}
-
-function formatPromptModel(
-    model: PromptOptions["model"] | null | undefined,
-): string | null {
-    if (!model) return null;
-    if (!model.providerID || !model.modelID) return null;
-    return `${model.providerID}/${model.modelID}`;
 }
 
 interface FormattedSummaryResult {
@@ -106,28 +81,11 @@ function toText(value: unknown): string | null {
     return trimmed.length > 0 ? trimmed : null;
 }
 
-function normalizeModel(
-    providerID?: unknown,
-    modelID?: unknown,
-): string | null {
-    const provider = toText(providerID)?.toLowerCase();
-    const model = toText(modelID)?.toLowerCase();
-    if (!provider || !model) return null;
-    return `${provider}/${model}`;
-}
-
-function messageModel(info: Record<string, unknown>): string | null {
-    const direct = normalizeModel(info.providerID, info.modelID);
-    if (direct) return direct;
-
-    const model = info.model;
-    if (!model || typeof model !== "object") return null;
-    const modelObj = model as Record<string, unknown>;
-    return normalizeModel(modelObj.providerID, modelObj.modelID);
-}
-
-function messageAgent(info: Record<string, unknown>): string | null {
-    return toText(info.agent);
+function toNumber(value: unknown): number | null {
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value !== "string") return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
 }
 
 function formatProviderModel(provider: unknown, model: unknown): string | null {
@@ -143,6 +101,129 @@ function normalizeResultText(value: string | null | undefined): string {
     return trimmed.length > 0 ? trimmed : "(empty result)";
 }
 
+interface PromptComplexity {
+    level: "simple" | "complex";
+    reason: string;
+}
+
+const COMPLEX_KEYWORDS = [
+    "refactor",
+    "architecture",
+    "migrate",
+    "migration",
+    "workflow",
+    "design",
+    "risk",
+    "rollback",
+    "multi-file",
+    "cross-file",
+    "integration",
+    "시스템",
+    "구조",
+    "아키텍처",
+    "리팩터",
+    "마이그레이션",
+    "다중 파일",
+    "복잡",
+    "리스크",
+    "장애",
+    "복구",
+];
+
+function assessPromptComplexity(prompt: string): PromptComplexity {
+    const text = prompt.trim();
+    if (!text) {
+        return {
+            level: "simple",
+            reason: "empty_prompt",
+        };
+    }
+
+    const lineCount = text.split("\n").length;
+    if (lineCount >= 8) {
+        return {
+            level: "complex",
+            reason: "many_lines",
+        };
+    }
+
+    if (text.length >= 320) {
+        return {
+            level: "complex",
+            reason: "long_prompt",
+        };
+    }
+
+    const lowered = text.toLowerCase();
+    for (const keyword of COMPLEX_KEYWORDS) {
+        if (lowered.includes(keyword)) {
+            return {
+                level: "complex",
+                reason: `keyword:${keyword}`,
+            };
+        }
+    }
+
+    return {
+        level: "simple",
+        reason: "default_simple",
+    };
+}
+
+interface DispatchRoute {
+    agent: string | null;
+    route:
+        | "fixed"
+        | "eq1_simple"
+        | "eq1_complex"
+        | "auto_simple"
+        | "auto_complex"
+        | "none";
+    reason: string;
+}
+
+interface Eq1RoutingDecision {
+    level: "simple" | "complex";
+    reason: string;
+    provider: string;
+    model: string | null;
+}
+
+const EQ1_COMPLEX_CUES = [
+    "complex",
+    "high",
+    "risk",
+    "risky",
+    "sisyphus",
+    "deep",
+    "hard",
+    "difficult",
+    "복잡",
+    "리스크",
+    "고위험",
+];
+
+const EQ1_SIMPLE_CUES = [
+    "simple",
+    "low",
+    "safe",
+    "spark",
+    "quick",
+    "easy",
+    "trivial",
+    "단순",
+    "저위험",
+    "간단",
+];
+
+function normalizeCueText(raw: string): string {
+    return raw.trim().toLowerCase();
+}
+
+function includesAnyCue(text: string, cues: string[]): boolean {
+    return cues.some((cue) => text.includes(cue));
+}
+
 export class Queue {
     private store: Store;
     private server: OpenCodeServer;
@@ -153,9 +234,12 @@ export class Queue {
     private retryBaseDelayMs: number;
     private retryMaxDelayMs: number;
     private now: () => number;
+    private x2Dispatcher: ReturnType<(typeof opencodeAgent)["X2_dispatcher"]>;
     private bypassAgent: string | null;
-    private bypassModel: PromptOptions["model"] | null;
     private summarizerAgent: string | null;
+    private agentRoutingMode: AgentRoutingMode;
+    private simpleAgent: string | null;
+    private complexAgent: string | null;
 
     constructor(
         store: Store,
@@ -169,12 +253,21 @@ export class Queue {
         this.retryBaseDelayMs = options.retryBaseDelayMs ?? 3_000;
         this.retryMaxDelayMs = options.retryMaxDelayMs ?? 60_000;
         this.now = options.now ?? (() => Date.now());
+        this.x2Dispatcher =
+            options.x2Dispatcher ?? opencodeAgent.X2_dispatcher(null);
         this.bypassAgent = options.bypassAgent
             ? options.bypassAgent.trim() || null
             : null;
-        this.bypassModel = parsePromptModel(options.bypassModel);
         this.summarizerAgent = options.summarizerAgent
             ? options.summarizerAgent.trim() || null
+            : null;
+        this.agentRoutingMode =
+            options.agentRoutingMode === "auto" ? "auto" : "fixed";
+        this.simpleAgent = options.simpleAgent
+            ? options.simpleAgent.trim() || null
+            : null;
+        this.complexAgent = options.complexAgent
+            ? options.complexAgent.trim() || null
             : null;
     }
 
@@ -313,17 +406,21 @@ export class Queue {
                 this.store.updateTask(task.id, { sessionId: session.id });
             }
 
-            const options = this.getBypassPromptOptions(task);
-            const bypass = this.logBypassDispatch(task);
+            const route = await this.resolveDispatchRoute(task);
             this.store.updateTask(task.id, {
                 requestMessageId: null,
                 assistantMessageId: null,
-                runAgent: bypass.agent,
-                runModel: bypass.model,
+                runAgent: route.agent,
+                runModel: null,
                 summaryAgent: null,
                 summaryModel: null,
             });
-            await this.server.promptAsync(session.id, task.prompt, options);
+            await this.x2Dispatcher.prompt(
+                this.server,
+                session.id,
+                task.prompt,
+                route.agent,
+            );
             this.logTaskTransition(
                 task,
                 "running",
@@ -331,8 +428,10 @@ export class Queue {
                 "opencode_prompt_dispatched",
                 {
                     sessionId: session.id,
-                    bypassAgent: bypass.agent,
-                    bypassModel: bypass.model,
+                    bypassAgent: route.agent,
+                    bypassModel: this.x2Dispatcher.model,
+                    agentRoute: route.route,
+                    agentRouteReason: route.reason,
                 },
             );
             // dispatch 성공 시 terminal 상태가 아니므로 null
@@ -344,25 +443,180 @@ export class Queue {
         }
     }
 
-    private getBypassPromptOptions(task: Task): PromptOptions {
-        if (task.type !== "omo_request") {
-            return {};
-        }
-
-        return {
-            ...(this.bypassAgent ? { agent: this.bypassAgent } : {}),
-            ...(this.bypassModel ? { model: this.bypassModel } : {}),
-        };
+    private preferredAgentForLevel(level: "simple" | "complex"): string | null {
+        const complexPreferred =
+            this.complexAgent ?? this.bypassAgent ?? this.simpleAgent ?? null;
+        const simplePreferred =
+            this.simpleAgent ?? this.bypassAgent ?? this.complexAgent ?? null;
+        return level === "complex" ? complexPreferred : simplePreferred;
     }
 
-    private logBypassDispatch(task: Task): {
-        agent: string | null;
-        model: string | null;
-    } {
-        const bypassOptions = this.getBypassPromptOptions(task);
+    private selectEq1RoutingLevel(
+        output: Record<string, unknown>,
+    ): { level: "simple" | "complex"; reason: string } | null {
+        const candidates = [
+            toText(output.route),
+            toText(output.level),
+            toText(output.action),
+            toText(output.agent),
+            toText(output.agent_tier),
+            toText(output.strategy),
+        ];
+
+        for (const candidate of candidates) {
+            if (!candidate) continue;
+            const normalized = normalizeCueText(candidate);
+            if (includesAnyCue(normalized, EQ1_COMPLEX_CUES)) {
+                return {
+                    level: "complex",
+                    reason: `eq1:${normalized}`,
+                };
+            }
+            if (includesAnyCue(normalized, EQ1_SIMPLE_CUES)) {
+                return {
+                    level: "simple",
+                    reason: `eq1:${normalized}`,
+                };
+            }
+        }
+
+        const scoreRaw =
+            output.risk_score ??
+            output.complexity_score ??
+            output.score ??
+            output.risk;
+        const score = toNumber(scoreRaw);
+        if (score !== null) {
+            return {
+                level: score >= 7 ? "complex" : "simple",
+                reason: `eq1:score_${score}`,
+            };
+        }
+
+        return null;
+    }
+
+    private buildEq1RoutingPrompt(task: Task): string {
+        return JSON.stringify(
+            {
+                schema_version: "x2_agent_routing_request.v1",
+                objective:
+                    "Classify task complexity for execution agent routing only.",
+                policy: {
+                    simple: "route to spark",
+                    complex_or_risky: "route to sisyphus",
+                },
+                input: {
+                    source: task.source,
+                    prompt: task.prompt,
+                },
+                output_contract: {
+                    required: ["route", "reason"],
+                    route: ["simple", "complex"],
+                },
+            },
+            null,
+            2,
+        );
+    }
+
+    private async resolveEq1RoutingDecision(
+        task: Task,
+    ): Promise<Eq1RoutingDecision | null> {
+        if (!this.eq1Client) return null;
+
+        try {
+            const result = await this.eq1Client.classify(
+                this.buildEq1RoutingPrompt(task),
+                {
+                    source: "x2_agent_routing",
+                    taskId: task.id,
+                    taskSource: task.source,
+                },
+            );
+            const output = this.asRecord(result.output);
+            if (!output) {
+                logger.warn("x2_agent_routing_eq1_non_object", {
+                    task: task.id.slice(0, 8),
+                    provider: result.provider,
+                    model: result.model ?? null,
+                });
+                return null;
+            }
+
+            const selected = this.selectEq1RoutingLevel(output);
+            if (!selected) {
+                logger.warn("x2_agent_routing_eq1_unrecognized", {
+                    task: task.id.slice(0, 8),
+                    provider: result.provider,
+                    model: result.model ?? null,
+                });
+                return null;
+            }
+
+            return {
+                level: selected.level,
+                reason: selected.reason,
+                provider: result.provider,
+                model: result.model ?? null,
+            };
+        } catch (error) {
+            const message =
+                error instanceof Error ? error.message : String(error);
+            logger.warn("x2_agent_routing_eq1_failed", {
+                task: task.id.slice(0, 8),
+                error: message,
+            });
+            return null;
+        }
+    }
+
+    private async resolveDispatchRoute(task: Task): Promise<DispatchRoute> {
+        if (task.type !== "omo_request") {
+            return {
+                agent: null,
+                route: "none",
+                reason: "non_omo_request",
+            };
+        }
+
+        if (this.agentRoutingMode === "fixed") {
+            return {
+                agent: this.bypassAgent,
+                route: "fixed",
+                reason: "routing_mode_fixed",
+            };
+        }
+
+        const eq1Decision = await this.resolveEq1RoutingDecision(task);
+        if (eq1Decision) {
+            const selected = this.preferredAgentForLevel(eq1Decision.level);
+            logger.info("x2_agent_routing_eq1_selected", {
+                task: task.id.slice(0, 8),
+                level: eq1Decision.level,
+                reason: eq1Decision.reason,
+                provider: eq1Decision.provider,
+                model: eq1Decision.model,
+                selectedAgent: selected,
+            });
+            return {
+                agent: selected,
+                route:
+                    eq1Decision.level === "complex"
+                        ? "eq1_complex"
+                        : "eq1_simple",
+                reason: eq1Decision.reason,
+            };
+        }
+
+        const complexity = assessPromptComplexity(task.prompt);
+        const selected = this.preferredAgentForLevel(complexity.level);
+
         return {
-            agent: bypassOptions.agent ?? null,
-            model: formatPromptModel(bypassOptions.model) ?? null,
+            agent: selected,
+            route:
+                complexity.level === "complex" ? "auto_complex" : "auto_simple",
+            reason: complexity.reason,
         };
     }
 
@@ -473,13 +727,7 @@ export class Queue {
             });
             const rawResult = normalizeResultText(summary.text);
             const formatted = await this.formatResultSummary(running, summary);
-            const assistantInfo = this.asRecord(assistant.info);
-            const observedRunModel = assistantInfo
-                ? messageModel(assistantInfo)
-                : null;
-            const observedRunAgent = assistantInfo
-                ? messageAgent(assistantInfo)
-                : null;
+            const observedRun = opencodeAgent.message_meta(assistant.info);
 
             const updated = this.store.updateTask(running.id, {
                 status: "completed",
@@ -488,11 +736,13 @@ export class Queue {
                 result: formatted.text,
                 error: null,
                 runAgent:
-                    observedRunAgent ??
+                    observedRun.agent ??
                     running.runAgent ??
                     this.bypassAgent ??
+                    this.simpleAgent ??
+                    this.complexAgent ??
                     null,
-                runModel: observedRunModel ?? running.runModel ?? null,
+                runModel: observedRun.model ?? running.runModel ?? null,
                 summaryAgent: formatted.summaryAgent,
                 summaryModel: formatted.summaryModel,
                 completedAt: this.now(),
@@ -524,16 +774,7 @@ export class Queue {
         task: Task,
         summary: Summary,
     ): Promise<FormattedSummaryResult> {
-        const fallback = formatSummary(summary);
-        if (!this.summarizerAgent) {
-            return {
-                text: fallback,
-                summaryAgent: "x2-local",
-                summaryModel: null,
-            };
-        }
-
-        const payload = {
+        const result = await opencodeAgent.X2_summarize(this.server, {
             task: {
                 id: task.id,
                 type: task.type,
@@ -547,66 +788,29 @@ export class Queue {
                 tokens: summary.tokens,
                 duration: summary.duration,
             },
-        };
+            fallbackText: formatSummary(summary),
+            summarizerAgent: this.summarizerAgent,
+        });
 
-        const prompt = [
-            "아래 실행 요약 payload를 사용자 전달용으로 압축 요약해 주세요.",
-            "- 사실만 사용하고 추측 금지",
-            "- 실패 원인이 있으면 복구 액션을 포함",
-            "- 한국어로 간결하게 작성",
-            "",
-            JSON.stringify(payload, null, 2),
-        ].join("\n");
-
-        try {
-            const result = await this.server.run(prompt, {
-                agent: this.summarizerAgent,
-                deleteAfter: true,
-                tools: {
-                    write: false,
-                    edit: false,
-                    bash: false,
-                },
-            });
-            const text = extractText(result.parts).trim();
-            if (!text) {
-                return {
-                    text: fallback,
-                    summaryAgent: "x2-local-fallback",
-                    summaryModel: null,
-                };
-            }
-            const resultInfo = this.asRecord(result.info);
-            const observedSummaryAgent =
-                (resultInfo ? messageAgent(resultInfo) : null) ??
-                this.summarizerAgent;
-            const observedSummaryModel = resultInfo
-                ? messageModel(resultInfo)
-                : null;
+        if (result.usedAgent) {
             logger.info("x2_summary_agent_applied", {
                 task: task.id.slice(0, 8),
-                agent: observedSummaryAgent,
-                model: observedSummaryModel,
+                agent: result.summaryAgent,
+                model: result.summaryModel,
             });
-            return {
-                text,
-                summaryAgent: observedSummaryAgent,
-                summaryModel: observedSummaryModel,
-            };
-        } catch (error) {
-            const message =
-                error instanceof Error ? error.message : String(error);
+        } else if (result.error) {
             logger.warn("x2_summary_agent_failed", {
                 task: task.id.slice(0, 8),
                 agent: this.summarizerAgent,
-                error: message,
+                error: result.error,
             });
-            return {
-                text: fallback,
-                summaryAgent: "x2-local-fallback",
-                summaryModel: null,
-            };
         }
+
+        return {
+            text: result.text,
+            summaryAgent: result.summaryAgent,
+            summaryModel: result.summaryModel,
+        };
     }
 
     async processCycle(): Promise<Task | null> {

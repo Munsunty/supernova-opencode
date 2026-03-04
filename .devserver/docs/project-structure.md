@@ -7,16 +7,27 @@
 opencode-supernova/
 ├── package.json
 ├── README.md
+├── docs/                               ← Genesis bootstrap output/workspace docs
+│   ├── AGENTS.md
+│   ├── phase_TODO.md
+│   └── templates/
+│       ├── AGENTS.template.md
+│       └── phase_TODO.template.md
 └── .devserver/                         ← Dₚ 패키지 루트 (격리 환경)
     ├── package.json
     ├── dev-up.sh / dev-doctor.sh / dev-smoke.sh
     ├── opencode.json
     ├── agents/
     │   ├── spark.prompt.txt
+    │   ├── genesis.prompt.txt
+    │   ├── eq1-core.prompt.txt
     │   ├── x2-summarizer.prompt.txt
     │   └── x4-summarizer.prompt.txt
     ├── run-sync/
-    │   └── oh-my-opencode.jsonc
+    │   ├── oh-my-opencode.jsonc
+    │   └── templates/
+    │       ├── AGENTS.template.md
+    │       └── phase_TODO.template.md
     ├── docs/
     │   ├── AGENTS.md
     │   ├── HOMSA.md
@@ -45,6 +56,7 @@ opencode-supernova/
     │   │   │   ├── cerebras.ts
     │   │   │   ├── groq.ts
     │   │   │   ├── openai-compatible.ts
+    │   │   │   ├── opencode-internal.ts
     │   │   │   └── env.ts
     │   │   ├── mock-provider.ts
     │   │   ├── smoke.ts

@@ -2,7 +2,6 @@
 data/
 cache/
 opencode.runtime.json
-opencode.json
 auth.json
 run-sync/auth*.json
 

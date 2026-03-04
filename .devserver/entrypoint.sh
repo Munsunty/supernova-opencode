@@ -24,6 +24,10 @@ OPENCODE_AUTH_IMPORT_MODE="${OPENCODE_AUTH_IMPORT_MODE:-always}"
 OPENCODE_OMO_CONFIG_IMPORT_PATH="${OPENCODE_OMO_CONFIG_IMPORT_PATH:-}"
 OPENCODE_OMO_CONFIG_FILE="${OPENCODE_OMO_CONFIG_FILE:-$OPENCODE_CONFIG_DIR/oh-my-opencode.jsonc}"
 OPENCODE_OMO_CONFIG_IMPORT_MODE="${OPENCODE_OMO_CONFIG_IMPORT_MODE:-always}"
+OPENCODE_TEMPLATES_IMPORT_PATH="${OPENCODE_TEMPLATES_IMPORT_PATH:-}"
+OPENCODE_TEMPLATES_IMPORT_MODE="${OPENCODE_TEMPLATES_IMPORT_MODE:-always}"
+OPENCODE_TEMPLATES_TARGET_DIR="${OPENCODE_TEMPLATES_TARGET_DIR:-$WORKSPACE_DIR/docs/templates}"
+OPENCODE_TEMPLATES_FALLBACK_PATH="${OPENCODE_TEMPLATES_FALLBACK_PATH:-/opt/opencode/templates}"
 OPENCODE_X1_WEBHOOK_SCRIPT="${OPENCODE_X1_WEBHOOK_SCRIPT:-/opt/opencode/src/x1/webhook.ts}"
 OPENCODE_X1_WEBHOOK_HOST="${OPENCODE_X1_WEBHOOK_HOST:-0.0.0.0}"
 OPENCODE_X1_WEBHOOK_PORT="${OPENCODE_X1_WEBHOOK_PORT:-5100}"
@@ -115,6 +119,44 @@ sync_omo_config_file() {
   echo "OmO config sync: $OPENCODE_OMO_CONFIG_IMPORT_PATH -> $OPENCODE_OMO_CONFIG_FILE (mode=$OPENCODE_OMO_CONFIG_IMPORT_MODE)"
 }
 
+sync_templates_dir() {
+  if [ "$OPENCODE_TEMPLATES_IMPORT_MODE" = "off" ]; then
+    return 0
+  fi
+
+  local source_path=""
+  if [ -n "$OPENCODE_TEMPLATES_IMPORT_PATH" ] && [ -d "$OPENCODE_TEMPLATES_IMPORT_PATH" ]; then
+    source_path="$OPENCODE_TEMPLATES_IMPORT_PATH"
+  elif [ -d "$OPENCODE_TEMPLATES_FALLBACK_PATH" ]; then
+    source_path="$OPENCODE_TEMPLATES_FALLBACK_PATH"
+  fi
+
+  if [ -z "$source_path" ]; then
+    echo "WARN: docs template seed not found (import=$OPENCODE_TEMPLATES_IMPORT_PATH fallback=$OPENCODE_TEMPLATES_FALLBACK_PATH)"
+    return 0
+  fi
+
+  case "$OPENCODE_TEMPLATES_IMPORT_MODE" in
+    always)
+      mkdir -p "$OPENCODE_TEMPLATES_TARGET_DIR"
+      cp -a "$source_path"/. "$OPENCODE_TEMPLATES_TARGET_DIR"/
+      ;;
+    if-missing)
+      if [ -d "$OPENCODE_TEMPLATES_TARGET_DIR" ] && [ -n "$(ls -A "$OPENCODE_TEMPLATES_TARGET_DIR" 2>/dev/null)" ]; then
+        return 0
+      fi
+      mkdir -p "$OPENCODE_TEMPLATES_TARGET_DIR"
+      cp -a "$source_path"/. "$OPENCODE_TEMPLATES_TARGET_DIR"/
+      ;;
+    *)
+      echo "ERROR: invalid OPENCODE_TEMPLATES_IMPORT_MODE=$OPENCODE_TEMPLATES_IMPORT_MODE (allowed: always|if-missing|off)"
+      exit 1
+      ;;
+  esac
+
+  echo "Templates sync: $source_path -> $OPENCODE_TEMPLATES_TARGET_DIR (mode=$OPENCODE_TEMPLATES_IMPORT_MODE)"
+}
+
 ensure_dashboard_project_tracked() {
   if [ "$DASHBOARD_AUTO_ADD_PROJECT" != "1" ]; then
     return 0
@@ -165,6 +207,7 @@ fi
 
 sync_omo_config_file
 sync_auth_file
+sync_templates_dir
 
 # Keep process cwd anchored to workspace so OpenCode/Dashboard
 # derive project context from /workspace/project consistently.

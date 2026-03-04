@@ -1,16 +1,22 @@
+# temp_TODO.md (Archived)
+
+Status: CLOSED (2026-03-04)
+Close reason: `PS-20260304-08` close (`PH-P1-GENESIS-001` 완료, genesis bootstrap 경로/생성 smoke 완료)
+
 # temp_TODO.md
 
 *Last Updated: 2026-03-04*
 
 Template-Version: v2
 
-Status: OPEN
-PhaseStamp: PS-20260304-10
+Status: CLOSED (2026-03-04)
+Close reason: `PS-20260304-08` close (`PH-P1-GENESIS-001` 완료, genesis bootstrap 경로/생성 smoke 완료)
+PhaseStamp: PS-20260304-08
 
 ## 목적
 
 - `phase_TODO.md`가 Present로 확정한 항목의 실행을 관리한다.
-- 대상: `PS-20260304-10`의 `Next`에서 선별된 `PhaseRef` 수행 항목
+- 대상: `PS-20260304-08`의 `Next`에서 선별된 `PhaseRef` 수행 항목
 - 제외: 다음 phase로 이월되는 항목
 - 상태 흐름: **Present(캐싱) → Todo(실행 분해) → In Progress(착수) → Done**
 - Backlog: Todo 정리 과정에서 파생된 후순위·변경 후보를 메모한다.
@@ -44,7 +50,7 @@ In Progress 항목은 아래 정보를 기록한다.
 
 > `phase_TODO.md` Present 확정 항목 스냅샷
 
-- 없음
+- `PH-P1-GENESIS-001` [완료] Genesis bootstrap 실행 경로를 run-sync templates 기준으로 확정하고 생성 결과(`docs/AGENTS.md`, `docs/phase_TODO.md`) 생성 smoke를 완료
 
 ## Todo
 
@@ -56,7 +62,7 @@ In Progress 항목은 아래 정보를 기록한다.
 
 ## Done
 
-- 없음
+- `TK-PS08-GENESIS-001` (`PhaseRef: PH-P1-GENESIS-001`) Genesis bootstrap 생성 smoke를 완료하고 run-sync templates → `docs/templates` 동기화 경로를 기준으로 `docs/AGENTS.md`, `docs/phase_TODO.md` 생성 경로 동작을 확정
 
 ## Backlog
 
@@ -68,5 +74,7 @@ In Progress 항목은 아래 정보를 기록한다.
 
 ## Run Log
 
-- 2026-03-04: 이전 phase(`PS-20260304-09`) close/archive 완료 (`archive/temp_TODO.2026-03-04.PS-20260304-09.20260304-191056.closed.md`)
-- 2026-03-04: `PS-20260304-10` 시작, `temp_TODO.md` 신규 오픈 생성
+- 2026-03-04: 이전 phase(`PS-20260304-07`) close/archive 완료 (`archive/temp_TODO.2026-03-04.PS-20260304-07.20260304-190631.closed.md`)
+- 2026-03-04: `PS-20260304-08` 시작, `temp_TODO.md` 신규 오픈 생성
+- 2026-03-04: `PS-20260304-08` Present를 `PH-P1-GENESIS-001`로 갱신하고 `temp_TODO.md` Present/Todo 동기화
+- 2026-03-04: `TK-PS08-GENESIS-001` 완료 및 `PS-20260304-08` close 처리

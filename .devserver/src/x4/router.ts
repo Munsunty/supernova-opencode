@@ -1,5 +1,5 @@
 import type { Eq1Client } from "../eq1/llm-client";
-import { createLogger } from "../utils/logging";
+import { createLogger, opencodeAgent } from "../utils";
 import type { Interaction, Store, Task, TaskType } from "../x2/store";
 import type { InteractionEvaluation } from "../x3/evaluator";
 import { summarizeInteractionContext } from "./summarizer";
@@ -231,50 +231,21 @@ export class X4Router {
             return summary;
         }
 
-        const prompt = [
-            "아래 interaction summary를 라우팅 판단용으로 간결하게 요약해 주세요.",
-            "- 사실/리스크/권장 액션이 드러나야 함",
-            "- 추측 금지, 누락 정보는 unknown 명시",
-            "",
-            JSON.stringify(summary, null, 2),
-        ].join("\n");
-
-        try {
-            const result = await this.server.run(prompt, {
-                agent: this.summarizerAgent,
-                deleteAfter: true,
-                tools: {
-                    write: false,
-                    edit: false,
-                    bash: false,
-                },
-            });
-            const llmSummary =
-                result.parts
-                    .filter((part) => part.type === "text")
-                    .map((part) => (part.type === "text" ? part.text : ""))
-                    .join("\n")
-                    .trim() || null;
-            if (!llmSummary) return summary;
-
-            const enriched = {
-                ...summary,
-                llm_summary: llmSummary,
-                llm_summary_agent: this.summarizerAgent,
-            };
-
+        const result = await opencodeAgent.X4_summarize(this.server, {
+            summary,
+            summarizerAgent: this.summarizerAgent,
+        });
+        if (result.usedAgent && result.agent) {
             logger.info("x4_summary_agent_applied", {
-                agent: this.summarizerAgent,
+                agent: result.agent,
             });
-            return enriched;
-        } catch (error) {
-            const message =
-                error instanceof Error ? error.message : String(error);
+        } else if (result.error) {
             logger.warn("x4_summary_agent_failed", {
                 agent: this.summarizerAgent,
-                error: message,
+                error: result.error,
             });
-            return summary;
         }
+
+        return result.summary;
     }
 }

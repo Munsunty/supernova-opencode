@@ -17,6 +17,15 @@ interface WorkerOptions {
     x4SummarizerAgent: string | null;
 }
 
+interface DetectorTickLogPayload {
+    seen: number;
+    enqueued: number;
+    duplicate: number;
+    invalid: number;
+    processed: number;
+    pending: number;
+}
+
 const logger = createLogger("X3.Worker");
 
 function parseJsonPolicy(raw: string | undefined): unknown | undefined {
@@ -159,6 +168,22 @@ async function processPendingInteractions(
     return processed;
 }
 
+function logDetectorTick(payload: DetectorTickLogPayload) {
+    const isAllZero =
+        payload.seen === 0 &&
+        payload.enqueued === 0 &&
+        payload.duplicate === 0 &&
+        payload.invalid === 0 &&
+        payload.processed === 0 &&
+        payload.pending === 0;
+
+    if (isAllZero) {
+        logger.debug("detector_tick_done", payload);
+        return;
+    }
+    logger.info("detector_tick_done", payload);
+}
+
 async function main() {
     const options = parseArgs(process.argv.slice(2));
     const store = new Store();
@@ -203,7 +228,7 @@ async function main() {
               )
             : 0;
         const queueStats = store.getInteractionStats();
-        logger.info("detector_once_done", {
+        const oncePayload = {
             seen: stats.seen,
             enqueued: stats.enqueued,
             duplicate: stats.duplicate,
@@ -212,7 +237,21 @@ async function main() {
             pending: queueStats.pending,
             answered: queueStats.answered,
             rejected: queueStats.rejected,
-        });
+        };
+        const onceAllZero =
+            oncePayload.seen === 0 &&
+            oncePayload.enqueued === 0 &&
+            oncePayload.duplicate === 0 &&
+            oncePayload.invalid === 0 &&
+            oncePayload.processed === 0 &&
+            oncePayload.pending === 0 &&
+            oncePayload.answered === 0 &&
+            oncePayload.rejected === 0;
+        if (onceAllZero) {
+            logger.debug("detector_once_done", oncePayload);
+        } else {
+            logger.info("detector_once_done", oncePayload);
+        }
         store.close();
         return;
     }
@@ -227,7 +266,7 @@ async function main() {
                   )
                 : 0;
             const queueStats = store.getInteractionStats();
-            logger.info("detector_tick_done", {
+            logDetectorTick({
                 seen: stats.seen,
                 enqueued: stats.enqueued,
                 duplicate: stats.duplicate,

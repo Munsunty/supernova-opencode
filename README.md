@@ -22,6 +22,7 @@
   - `event.subscribe`(SSE) + polling 병행
   - `messageId` 바인딩 + `getMessage` 우선 finalize
   - Telegram source 기준 세션 재사용
+  - OMO agent 자동 라우팅: `eq1` 분류 우선, 실패 시 fallback 규칙 적용 (단순=`spark`, 복잡/리스크=`sisyphus`)
 - 결과 전송:
   - Telegram `monitor/raw` 메시지: 기본 결과를 항상 전송
   - Telegram `summary/meta` 메시지: 요약 + 실행/요약 `agent`/`model` 메타 포함

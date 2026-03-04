@@ -158,4 +158,53 @@ describe("Eq1Client", () => {
             "Eq1 response is not valid JSON",
         );
     });
+
+    test("falls back to secondary provider when primary response is non-JSON", async () => {
+        const primary = new MockEqProvider([{ text: "not-json" }]);
+        const fallback = new MockEqProvider([
+            {
+                text: JSON.stringify({
+                    action: "report",
+                    reason: "fallback-json",
+                }),
+                provider: "fallback-provider",
+            },
+        ]);
+        const client = new Eq1Client(primary, {
+            retryAttempts: 1,
+            fallbackProvider: fallback,
+        });
+
+        const result = await client.route("fallback route");
+        expect((result.output as { action?: string }).action).toBe("report");
+        expect(result.provider).toBe("fallback-provider");
+        expect(primary.calls.length).toBe(1);
+        expect(fallback.calls.length).toBe(1);
+    });
+
+    test("falls back to secondary provider when primary provider throws", async () => {
+        const primary = new MockEqProvider([
+            { error: "cerebras completion failed (400): bad request" },
+        ]);
+        const fallback = new MockEqProvider([
+            {
+                text: JSON.stringify({
+                    action: "auto",
+                    score: 2,
+                    reason: "fallback-provider-used",
+                }),
+                provider: "fallback-provider",
+            },
+        ]);
+        const client = new Eq1Client(primary, {
+            retryAttempts: 1,
+            fallbackProvider: fallback,
+        });
+
+        const result = await client.evaluate("fallback evaluate");
+        expect((result.output as { action?: string }).action).toBe("auto");
+        expect(result.provider).toBe("fallback-provider");
+        expect(primary.calls.length).toBe(1);
+        expect(fallback.calls.length).toBe(1);
+    });
 });
