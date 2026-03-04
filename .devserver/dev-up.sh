@@ -39,9 +39,18 @@ if [ "$#" -gt 1 ]; then
   exit 1
 fi
 
+USING_DOCKER_FALLBACK=0
+
+
 if ! command -v podman >/dev/null 2>&1; then
-  echo "ERROR: podman command not found"
-  exit 1
+  if command -v docker >/dev/null 2>&1; then
+    echo "INFO: podman not found, falling back to docker"
+    USING_DOCKER_FALLBACK=1
+    podman() { docker "$@"; }
+  else
+    echo "ERROR: neither podman nor docker found"
+    exit 1
+  fi
 fi
 
 # macOS: detect Podman Machine socket BEFORE XDG vars are overridden,
@@ -56,6 +65,17 @@ fi
 
 podman_preflight() {
   echo "Preflight: podman runtime diagnostics..."
+
+  if [ "$USING_DOCKER_FALLBACK" = "1" ]; then
+    if docker info >/dev/null 2>&1; then
+      echo "Preflight: docker runtime OK (podman fallback)"
+      return 0
+    else
+      echo "ERROR: docker daemon is not running"
+      echo "Recovery: sudo systemctl start docker"
+      return 1
+    fi
+  fi
 
   if ! podman info >/dev/null 2>&1; then
     echo "ERROR: podman info failed. Podman runtime is not ready."
