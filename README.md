@@ -7,33 +7,38 @@
 이 프로젝트는 Phase 진행 중인 개발 상태이며, 일반 사용/운영 환경 사용을 금지합니다.
 구조 검토와 내부 개발 용도로만 다뤄주세요.
 
-## Current Phase
+## Current Snapshot (2026-03-04)
 
-- Phase 1~3 완료
-  - Phase 1: Dₚ 격리 + X_oc(wrapper) 완료
-  - Phase 2: X₂ task queue/worker loop 완료
-  - Phase 3: Eq₁ LLM client 실행 채널 완료
-- Phase 4 진행 중 (X₃ + X₄ 통합)
-- 운영/서비스 배포 전
+- Phase 1 완료: Dₚ 격리 + `X_oc` wrapper
+- Phase 2 완료: `X2` queue/worker loop
+- Phase 3 완료: `Eq1` LLM 실행 채널
+- Phase 4 핵심 통합 완료: `X3` detector/evaluator/responder + `X4` summarize/router
+- 현재 운영 Phase: `PS-20260304-06` (상세는 `.devserver/docs/phase_TODO.md`)
 
-## Recent Milestones (docs + git 기준)
+## Current Capability
 
-- `7b757e4` — `feat(x2): finalize Phase 2 queue/worker flow`
-- `bcea588` — `feat(eq1): complete phase 3 execution path`
-- `23f4503` — `phase3: harden eq1 failure-paths, retry boundaries, and logging redaction`
-- `011c25c` — `phase4: add x3 detector loop and interaction queue scaffold`
-
-상세 상태와 완료 조건은 `phase_TODO.md`의 `Previous`/`Present`를 기준으로 관리합니다.
+- `X1` Telegram ingress: 사용자 본문만 prompt 전달, source를 `#chat:<chatId>` 스코프로 관리
+- `X2` 실행 안정화:
+  - `event.subscribe`(SSE) + polling 병행
+  - `messageId` 바인딩 + `getMessage` 우선 finalize
+  - Telegram source 기준 세션 재사용
+- 결과 전송:
+  - Telegram `monitor/raw` 메시지: 기본 결과를 항상 전송
+  - Telegram `summary/meta` 메시지: 요약 + 실행/요약 `agent`/`model` 메타 포함
+- summarizer agent 런타임 연결:
+  - `x2-summarizer` (결과 요약)
+  - `x4-summarizer` (라우팅용 요약 enrichment)
 
 ## Docs
 
-- `AGENTS.md`
-- `HOMSA.md`
-- `docs/TODO.md`
+- `.devserver/docs/AGENTS.md`
+- `.devserver/docs/HOMSA.md`
 - `.devserver/docs/phase_TODO.md`
 - `.devserver/docs/temp_TODO.md`
+- `.devserver/docs/SCHEMA.md`
 - `.devserver/docs/project-structure.md`
 - `.devserver/docs/isolation.md`
+- `.devserver/docs/operations.md`
 
 ## Related Projects
 

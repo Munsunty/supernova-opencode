@@ -7,7 +7,10 @@ import { Store } from "../../src/x2/store";
 
 type FakeMessage = {
     info: {
+        id: string;
+        sessionID: string;
         role: "assistant" | "user";
+        parentID?: string;
         cost: number;
         tokens: {
             input: number;
@@ -34,9 +37,34 @@ type FakeMessage = {
 
 class FakeServer {
     private seq = 0;
+    public createSessionCalls = 0;
     public promptCalls = 0;
+    public lastPromptArgs: Array<{
+        sessionId: string;
+        text: string;
+        options?: {
+            agent?: string;
+            model?: {
+                providerID: string;
+                modelID: string;
+            };
+        };
+    }> = [];
     public abortCalls = 0;
+    public getMessagesCalls: Array<{
+        sessionId: string;
+        limit: number | null;
+    }> = [];
+    public getMessageCalls: Array<{
+        sessionId: string;
+        messageId: string;
+    }> = [];
+    public runCalls: Array<{
+        prompt: string;
+        options?: Record<string, unknown>;
+    }> = [];
     public throwOnPrompt = false;
+    public throwOnRun = false;
     public sessions = new Map<
         string,
         {
@@ -46,12 +74,15 @@ class FakeServer {
     >();
 
     async createSession(title?: string) {
+        this.createSessionCalls++;
         const id = `ses_test_${++this.seq}`;
         this.sessions.set(id, {
             status: "idle",
             messages: [
                 {
                     info: {
+                        id: `msg_user_boot_${id}`,
+                        sessionID: id,
                         role: "user",
                         cost: 0,
                         tokens: {
@@ -76,17 +107,56 @@ class FakeServer {
         return { id };
     }
 
-    async promptAsync(sessionId: string, text: string): Promise<void> {
+    async promptAsync(
+        sessionId: string,
+        text: string,
+        options?: {
+            agent?: string;
+            model?: {
+                providerID: string;
+                modelID: string;
+            };
+        },
+    ): Promise<void> {
         this.promptCalls++;
+        this.lastPromptArgs.push({ sessionId, text, options });
         if (this.throwOnPrompt) {
             throw new Error("promptAsync failed");
         }
         const s = this.sessions.get(sessionId);
         if (!s) throw new Error(`session not found: ${sessionId}`);
-        s.status = "busy";
+        const userMessageId = `msg_user_${++this.seq}`;
         s.messages.push({
             info: {
+                id: userMessageId,
+                sessionID: sessionId,
+                role: "user",
+                cost: 0,
+                tokens: {
+                    input: 0,
+                    output: 0,
+                    reasoning: 0,
+                    cache: { read: 0, write: 0 },
+                },
+                time: { created: Date.now(), completed: Date.now() },
+            },
+            parts: [
+                {
+                    type: "text",
+                    text,
+                    synthetic: false,
+                    ignored: false,
+                },
+            ],
+        });
+        s.status = "busy";
+        const assistantMessageId = `msg_assistant_${++this.seq}`;
+        s.messages.push({
+            info: {
+                id: assistantMessageId,
+                sessionID: sessionId,
                 role: "assistant",
+                parentID: userMessageId,
                 cost: 0.001,
                 tokens: {
                     input: 5,
@@ -115,10 +185,64 @@ class FakeServer {
         return out;
     }
 
-    async getMessages(sessionId: string) {
+    async getMessages(sessionId: string, options?: { limit?: number }) {
         const s = this.sessions.get(sessionId);
         if (!s) throw new Error(`session not found: ${sessionId}`);
-        return s.messages as unknown[];
+        const limit =
+            typeof options?.limit === "number" &&
+            Number.isFinite(options.limit) &&
+            options.limit > 0
+                ? Math.trunc(options.limit)
+                : null;
+        this.getMessagesCalls.push({
+            sessionId,
+            limit,
+        });
+        if (limit === null) return s.messages as unknown[];
+        return s.messages.slice(-limit) as unknown[];
+    }
+
+    async getMessage(sessionId: string, messageId: string) {
+        this.getMessageCalls.push({
+            sessionId,
+            messageId,
+        });
+        const s = this.sessions.get(sessionId);
+        if (!s) throw new Error(`session not found: ${sessionId}`);
+        const message = s.messages.find((item) => item.info.id === messageId);
+        if (!message) throw new Error(`message not found: ${messageId}`);
+        return message as unknown;
+    }
+
+    async run(prompt: string, options?: Record<string, unknown>) {
+        this.runCalls.push({
+            prompt,
+            options,
+        });
+        if (this.throwOnRun) {
+            throw new Error("run failed");
+        }
+        return {
+            info: {
+                role: "assistant",
+                cost: 0,
+                tokens: {
+                    input: 0,
+                    output: 0,
+                    reasoning: 0,
+                    cache: { read: 0, write: 0 },
+                },
+                time: { created: Date.now(), completed: Date.now() },
+            },
+            parts: [
+                {
+                    type: "text",
+                    text: "summarized by x2 agent",
+                    synthetic: false,
+                    ignored: false,
+                },
+            ],
+        };
     }
 
     async abortSession(sessionId: string): Promise<boolean> {
@@ -268,6 +392,57 @@ describe("X2 Queue", () => {
         store.close();
     });
 
+    test("dispatchNext sends agent+model bypass options for omo_request", async () => {
+        const store = createStore();
+        const server = new FakeServer();
+        const queue = new Queue(store, server as never, {
+            maxRetries: 0,
+            bypassAgent: "spark",
+            bypassModel: "openai/GPT-5.3-Codex-Spark",
+        });
+
+        queue.enqueue("spark path");
+        await queue.dispatchNext();
+
+        expect(server.promptCalls).toBe(1);
+        expect(server.lastPromptArgs).toHaveLength(1);
+        expect(server.lastPromptArgs[0]).toMatchObject({
+            options: {
+                agent: "spark",
+                model: {
+                    providerID: "openai",
+                    modelID: "GPT-5.3-Codex-Spark",
+                },
+            },
+        });
+
+        store.close();
+    });
+
+    test("dispatchNext sends only agent when bypassModel is omitted", async () => {
+        const store = createStore();
+        const server = new FakeServer();
+        const queue = new Queue(store, server as never, {
+            maxRetries: 0,
+            bypassAgent: "spark",
+            bypassModel: null,
+        });
+
+        queue.enqueue("spark path");
+        await queue.dispatchNext();
+
+        expect(server.promptCalls).toBe(1);
+        expect(server.lastPromptArgs).toHaveLength(1);
+        expect(server.lastPromptArgs[0]).toMatchObject({
+            options: {
+                agent: "spark",
+            },
+        });
+        expect(server.lastPromptArgs[0].options).not.toHaveProperty("model");
+
+        store.close();
+    });
+
     test("finalizeRunning completes task when session becomes idle", async () => {
         const store = createStore();
         const server = new FakeServer();
@@ -283,9 +458,65 @@ describe("X2 Queue", () => {
 
         expect(terminal).toBeDefined();
         expect(terminal?.status).toBe("completed");
+        expect(terminal?.rawResult).toContain("OK: return ok");
         expect(terminal?.result).toContain("OK: return ok");
         expect(terminal?.result).toContain("Tokens:");
         expect(store.getStats().completed).toBe(1);
+        expect(server.getMessagesCalls.length).toBe(1);
+        expect(server.getMessagesCalls[0]).toMatchObject({
+            sessionId: running!.sessionId!,
+            limit: 40,
+        });
+
+        store.close();
+    });
+
+    test("event ingest binds message ids and finalizeRunning prefers getMessage", async () => {
+        const store = createStore();
+        const server = new FakeServer();
+        const queue = new Queue(store, server as never, { maxRetries: 0 });
+
+        queue.enqueue("track ids");
+        await queue.dispatchNext();
+        const running = store.listTasks({ status: "running" })[0];
+        expect(running).toBeDefined();
+        const session = server.sessions.get(running!.sessionId!);
+        expect(session).toBeDefined();
+
+        const latestAssistant = [...session!.messages]
+            .reverse()
+            .find((message) => message.info.role === "assistant");
+        expect(latestAssistant).toBeDefined();
+
+        const eventBound = queue.ingestEvent({
+            type: "message.updated",
+            properties: {
+                info: {
+                    id: latestAssistant!.info.id,
+                    sessionID: running!.sessionId,
+                    role: "assistant",
+                    parentID: latestAssistant!.info.parentID,
+                    time: {
+                        created: latestAssistant!.info.time.created,
+                    },
+                },
+            },
+        });
+        expect(eventBound).toBe(true);
+
+        const tracked = store.getTask(running!.id);
+        expect(tracked?.assistantMessageId).toBe(latestAssistant!.info.id);
+        expect(tracked?.requestMessageId).toBe(latestAssistant!.info.parentID);
+
+        server.markIdle(running!.sessionId!);
+        const terminal = await queue.finalizeRunning();
+        expect(terminal?.status).toBe("completed");
+        expect(server.getMessageCalls.length).toBe(1);
+        expect(server.getMessageCalls[0]).toMatchObject({
+            sessionId: running!.sessionId!,
+            messageId: latestAssistant!.info.id,
+        });
+        expect(server.getMessagesCalls.length).toBe(0);
 
         store.close();
     });
@@ -317,6 +548,65 @@ describe("X2 Queue", () => {
         const terminal = await queue.finalizeRunning();
         expect(terminal).toBeDefined();
         expect(terminal?.status).toBe("completed");
+
+        store.close();
+    });
+
+    test("dispatchNext reuses latest session for same source", async () => {
+        const store = createStore();
+        const server = new FakeServer();
+        const queue = new Queue(store, server as never, { maxRetries: 0 });
+
+        const source = "x1_telegram_task#chat:88";
+        queue.enqueue("first", source, "omo_request");
+        queue.enqueue("second", source, "omo_request");
+
+        await queue.dispatchNext();
+        const firstRunning = store.listTasks({ status: "running" })[0];
+        expect(firstRunning).toBeDefined();
+        expect(firstRunning?.sessionId).toBeString();
+
+        server.markIdle(firstRunning!.sessionId!);
+        const firstTerminal = await queue.finalizeRunning();
+        expect(firstTerminal?.status).toBe("completed");
+
+        await queue.dispatchNext();
+        const secondRunning = store.listTasks({
+            status: "running",
+            limit: 1,
+        })[0];
+        expect(secondRunning).toBeDefined();
+        expect(secondRunning?.sessionId).toBe(firstRunning?.sessionId);
+        expect(server.createSessionCalls).toBe(1);
+
+        store.close();
+    });
+
+    test("dispatchNext does not reuse session for non-telegram source", async () => {
+        const store = createStore();
+        const server = new FakeServer();
+        const queue = new Queue(store, server as never, { maxRetries: 0 });
+
+        queue.enqueue("first", "cli", "omo_request");
+        queue.enqueue("second", "cli", "omo_request");
+
+        await queue.dispatchNext();
+        const firstRunning = store.listTasks({ status: "running" })[0];
+        expect(firstRunning).toBeDefined();
+        expect(firstRunning?.sessionId).toBeString();
+
+        server.markIdle(firstRunning!.sessionId!);
+        const firstTerminal = await queue.finalizeRunning();
+        expect(firstTerminal?.status).toBe("completed");
+
+        await queue.dispatchNext();
+        const secondRunning = store.listTasks({
+            status: "running",
+            limit: 1,
+        })[0];
+        expect(secondRunning).toBeDefined();
+        expect(secondRunning?.sessionId).not.toBe(firstRunning?.sessionId);
+        expect(server.createSessionCalls).toBe(2);
 
         store.close();
     });
@@ -356,6 +646,35 @@ describe("X2 Queue", () => {
         expect(second?.status).toBe("failed");
         expect(second?.attempts).toBe(2);
         expect(second?.error).toContain("promptAsync failed");
+
+        store.close();
+    });
+
+    test("finalizeRunning uses x2 summarizer agent output when configured", async () => {
+        const store = createStore();
+        const server = new FakeServer();
+        const queue = new Queue(store, server as never, {
+            maxRetries: 0,
+            summarizerAgent: "x2-summarizer",
+        });
+
+        queue.enqueue("summarize me");
+        await queue.dispatchNext();
+        const running = store.listTasks({ status: "running" })[0];
+        expect(running).toBeDefined();
+        server.markIdle(running!.sessionId!);
+
+        const terminal = await queue.finalizeRunning();
+        expect(terminal?.status).toBe("completed");
+        expect(terminal?.rawResult).toContain("OK: summarize me");
+        expect(terminal?.result).toBe("summarized by x2 agent");
+        expect(terminal?.summaryAgent).toBe("x2-summarizer");
+        expect(terminal?.summaryModel).toBeNull();
+        expect(server.runCalls.length).toBe(1);
+        expect(server.runCalls[0]?.options).toMatchObject({
+            agent: "x2-summarizer",
+            deleteAfter: true,
+        });
 
         store.close();
     });

@@ -1,6 +1,11 @@
 import { OpenCodeServer } from "../opencode-server-wrapper";
 import { Queue } from "./queue";
-import { Router, ConsoleReporter } from "./router";
+import {
+    Router,
+    ConsoleReporter,
+    TelegramReporter,
+    type Reporter,
+} from "./router";
 import { Store, type Task, type TaskType } from "./store";
 import { createEq1ClientFromEnv } from "../eq1/create-client";
 import { isEq1TaskType } from "../eq1/task-types";
@@ -14,12 +19,30 @@ interface WorkerOptions {
     enqueuePrompt: string | null;
     enqueueType: TaskType;
     source: string;
+    bypassAgent: string | null;
+    bypassModel: string | null;
+    summarizerAgent: string | null;
+    eventSubscribe: boolean;
     once: boolean;
     intervalMs: number;
     maxRetries: number;
     retryBaseMs: number;
     retryMaxMs: number;
     baseUrl: string;
+}
+
+function parseOptionalAgent(
+    raw: string | undefined,
+    fallback: string | null,
+): string | null {
+    if (raw === undefined) return fallback;
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    const lowered = trimmed.toLowerCase();
+    if (lowered === "off" || lowered === "none" || lowered === "null") {
+        return null;
+    }
+    return trimmed;
 }
 
 const logger = createLogger("X2.Worker");
@@ -69,6 +92,82 @@ function bootstrapEnv() {
     }
 }
 
+function parseBypassModel(raw: string): string {
+    const trimmed = raw.trim();
+    const slashIndex = trimmed.indexOf("/");
+    if (slashIndex <= 0 || slashIndex === trimmed.length - 1) {
+        throw new Error(`Invalid bypass model format: ${raw}`);
+    }
+    return trimmed;
+}
+
+function parseOptionalBypassModel(raw: string | undefined): string | null {
+    if (raw === undefined) return null;
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    try {
+        return parseBypassModel(trimmed);
+    } catch (error) {
+        logger.warn("invalid_bypass_model", {
+            raw: trimmed,
+            fallback: null,
+            reason:
+                error instanceof Error
+                    ? error.message
+                    : "Invalid bypass model format",
+        });
+        return null;
+    }
+}
+
+function parseBooleanEnv(raw: string | undefined, fallback: boolean): boolean {
+    if (raw === undefined) return fallback;
+    const normalized = raw.trim().toLowerCase();
+    if (["1", "true", "yes", "on"].includes(normalized)) return true;
+    if (["0", "false", "no", "off"].includes(normalized)) return false;
+    return fallback;
+}
+
+function createReporter(): Reporter {
+    const fallback = new ConsoleReporter();
+    const telegramReportEnabled = parseBooleanEnv(
+        process.env.X2_TELEGRAM_REPORT,
+        true,
+    );
+    if (!telegramReportEnabled) {
+        logger.info("x2_reporter_console_only", {
+            reason: "telegram_report_disabled",
+        });
+        return fallback;
+    }
+
+    const token = (
+        process.env.OPENCODE_X1_BOT_TOKEN ??
+        process.env.OPENCODE_X1_POLLER_TOKEN ??
+        process.env.TELEGRAM_BOT_TOKEN ??
+        ""
+    ).trim();
+    if (!token) {
+        logger.info("x2_reporter_console_only", {
+            reason: "telegram_token_missing",
+        });
+        return fallback;
+    }
+
+    const apiBase =
+        process.env.OPENCODE_X1_API_BASE ??
+        process.env.TELEGRAM_API_BASE ??
+        "https://api.telegram.org";
+    logger.info("x2_reporter_telegram_enabled", {
+        apiBase,
+    });
+    return new TelegramReporter({
+        token,
+        apiBase,
+        fallback,
+    });
+}
+
 function isTaskType(value: string): value is TaskType {
     return (
         value === "omo_request" || value === "report" || isEq1TaskType(value)
@@ -89,6 +188,13 @@ function parseArgs(argv: string[]): WorkerOptions {
         enqueuePrompt: null,
         enqueueType: "omo_request",
         source: "cli",
+        bypassAgent: process.env.X2_OMO_BYPASS_AGENT ?? "spark",
+        bypassModel: parseOptionalBypassModel(process.env.X2_OMO_BYPASS_MODEL),
+        summarizerAgent: parseOptionalAgent(
+            process.env.X2_SUMMARIZER_AGENT,
+            "x2-summarizer",
+        ),
+        eventSubscribe: parseBooleanEnv(process.env.X2_EVENT_SUBSCRIBE, true),
         once: false,
         intervalMs: 3000,
         maxRetries: 1,
@@ -120,6 +226,23 @@ function parseArgs(argv: string[]): WorkerOptions {
             case "--once":
                 options.once = true;
                 break;
+            case "--event-subscribe":
+                options.eventSubscribe = true;
+                break;
+            case "--no-event-subscribe":
+                options.eventSubscribe = false;
+                break;
+            case "--x2-summarizer-agent":
+                if (!next)
+                    throw new Error(
+                        "--x2-summarizer-agent requires an agent name",
+                    );
+                options.summarizerAgent = parseOptionalAgent(next, null);
+                i++;
+                break;
+            case "--no-x2-summarizer-agent":
+                options.summarizerAgent = null;
+                break;
             case "--interval":
                 if (!next) throw new Error("--interval requires milliseconds");
                 options.intervalMs = Number(next);
@@ -145,6 +268,18 @@ function parseArgs(argv: string[]): WorkerOptions {
             case "--base-url":
                 if (!next) throw new Error("--base-url requires a URL");
                 options.baseUrl = next;
+                i++;
+                break;
+            case "--bypass-agent":
+                if (!next)
+                    throw new Error("--bypass-agent requires an agent name");
+                options.bypassAgent = next;
+                i++;
+                break;
+            case "--bypass-model":
+                if (!next)
+                    throw new Error("--bypass-model requires a model value");
+                options.bypassModel = parseBypassModel(next);
                 i++;
                 break;
             case "--help":
@@ -182,11 +317,17 @@ Options:
   --enqueue "<prompt>"   Create a new task before running
   --type <taskType>      Task type (omo_request|classify|evaluate|summarize|route|report)
   --source <name>        Task source label (default: cli)
+  --event-subscribe      Enable OpenCode event.subscribe listener (default: on)
+  --no-event-subscribe   Disable OpenCode event.subscribe listener
+  --x2-summarizer-agent <name> Use agent for result summarization (default: x2-summarizer)
+  --no-x2-summarizer-agent Disable agent-based result summarization
   --once                 Process until queue is idle, then exit
   --interval <ms>        Loop interval for daemon mode (default: 3000)
   --max-retries <n>      Max retries before failed (default: 1)
   --retry-base-ms <ms>   Retry base delay (default: 3000)
   --retry-max-ms <ms>    Retry max delay cap (default: 60000)
+  --bypass-agent <name>  OMO bypass agent (default: spark)
+  --bypass-model <provider/model> OMO bypass model (optional)
   --base-url <url>       OpenCode base URL (default: http://127.0.0.1:4996)
   --help                 Show this help`);
 }
@@ -288,6 +429,38 @@ async function processUntilIdle(
     return processed;
 }
 
+async function runEventSubscribeLoop(
+    server: OpenCodeServer,
+    queue: Queue,
+    signal: AbortSignal,
+): Promise<void> {
+    while (!signal.aborted) {
+        try {
+            const subscription = await server.subscribe();
+            logger.info("event_subscribe_started");
+
+            for await (const event of subscription.stream) {
+                if (signal.aborted) break;
+                queue.ingestEvent(event);
+            }
+
+            if (!signal.aborted) {
+                logger.warn("event_subscribe_stream_ended");
+            }
+        } catch (error) {
+            if (signal.aborted) break;
+            const message =
+                error instanceof Error ? error.message : String(error);
+            logger.warn("event_subscribe_failed", { error: message });
+        }
+
+        if (signal.aborted) break;
+        await Bun.sleep(1000);
+    }
+
+    logger.info("event_subscribe_stopped");
+}
+
 async function main() {
     bootstrapEnv();
     const options = parseArgs(process.argv.slice(2));
@@ -314,8 +487,13 @@ async function main() {
         maxRetries: options.maxRetries,
         retryBaseDelayMs: options.retryBaseMs,
         retryMaxDelayMs: options.retryMaxMs,
+        bypassAgent: options.bypassAgent ?? null,
+        bypassModel: options.bypassModel ?? null,
+        summarizerAgent: options.summarizerAgent ?? null,
     });
-    const router = new Router(new ConsoleReporter());
+    const router = new Router(createReporter());
+    const eventSubscribeAbort = new AbortController();
+    let eventSubscribeLoop: Promise<void> | null = null;
 
     if (recovered > 0) {
         logger.warn("stale_running_recovered", { recovered });
@@ -411,6 +589,16 @@ async function main() {
         });
     }
 
+    if (options.eventSubscribe) {
+        eventSubscribeLoop = runEventSubscribeLoop(
+            server,
+            queue,
+            eventSubscribeAbort.signal,
+        );
+    } else {
+        logger.info("event_subscribe_disabled");
+    }
+
     if (options.once) {
         const processed = await processUntilIdle(queue, router, store);
         const stats = queue.getStats();
@@ -421,6 +609,8 @@ async function main() {
             completed: stats.completed,
             failed: stats.failed,
         });
+        eventSubscribeAbort.abort();
+        await eventSubscribeLoop?.catch(() => {});
         store.close();
         return;
     }
@@ -443,9 +633,12 @@ async function main() {
         max_retries: options.maxRetries,
         retry_base_ms: options.retryBaseMs,
         retry_max_ms: options.retryMaxMs,
+        x2_summarizer_agent: options.summarizerAgent,
+        event_subscribe: options.eventSubscribe,
     });
 
     const shutdown = () => {
+        eventSubscribeAbort.abort();
         queue.stopLoop();
         store.close();
         logger.info("loop_stopped");

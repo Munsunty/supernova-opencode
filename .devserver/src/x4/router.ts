@@ -3,6 +3,7 @@ import { createLogger } from "../utils/logging";
 import type { Interaction, Store, Task, TaskType } from "../x2/store";
 import type { InteractionEvaluation } from "../x3/evaluator";
 import { summarizeInteractionContext } from "./summarizer";
+import type { OpenCodeServer } from "../opencode-server-wrapper";
 
 const logger = createLogger("X4.Router");
 
@@ -21,6 +22,11 @@ export interface X4RouteRequest {
     request_hash: string;
     parent_id: string;
     summary: Record<string, unknown>;
+}
+
+interface X4RouterOptions {
+    server?: OpenCodeServer | null;
+    summarizerAgent?: string | null;
 }
 
 const ROUTE_REQUEST_SCHEMA_VERSION = "x4_route_request.v1";
@@ -128,10 +134,20 @@ function buildRouteDecision(
 export class X4Router {
     private store: Store;
     private eq1Client: Eq1Client;
+    private server: OpenCodeServer | null;
+    private summarizerAgent: string | null;
 
-    constructor(store: Store, eq1Client: Eq1Client) {
+    constructor(
+        store: Store,
+        eq1Client: Eq1Client,
+        options: X4RouterOptions = {},
+    ) {
         this.store = store;
         this.eq1Client = eq1Client;
+        this.server = options.server ?? null;
+        this.summarizerAgent = options.summarizerAgent
+            ? options.summarizerAgent.trim() || null
+            : null;
     }
 
     async routeInteraction(
@@ -139,9 +155,12 @@ export class X4Router {
         evaluation: InteractionEvaluation,
     ): Promise<{ decision: X4RouteDecision; task: Task | null }> {
         const summary = summarizeInteractionContext(interaction, evaluation);
-        const request = buildRouteRequest(interaction, summary);
+        const summaryWithLlm = await this.enrichSummaryWithAgent(summary);
+        const request = buildRouteRequest(interaction, summaryWithLlm);
         const requestPayload = JSON.stringify(request, null, 2);
-        const summaryText = JSON.stringify(summary, null, 2);
+        const summaryText =
+            toText(summaryWithLlm.llm_summary as unknown) ??
+            JSON.stringify(summaryWithLlm, null, 2);
 
         let output: Record<string, unknown> = {};
         try {
@@ -166,7 +185,7 @@ export class X4Router {
         const decision = buildRouteDecision(
             output,
             evaluation,
-            summary,
+            summaryWithLlm,
             summaryText,
         );
 
@@ -203,5 +222,59 @@ export class X4Router {
             decision,
             task,
         };
+    }
+
+    private async enrichSummaryWithAgent(
+        summary: Record<string, unknown>,
+    ): Promise<Record<string, unknown>> {
+        if (!this.server || !this.summarizerAgent) {
+            return summary;
+        }
+
+        const prompt = [
+            "아래 interaction summary를 라우팅 판단용으로 간결하게 요약해 주세요.",
+            "- 사실/리스크/권장 액션이 드러나야 함",
+            "- 추측 금지, 누락 정보는 unknown 명시",
+            "",
+            JSON.stringify(summary, null, 2),
+        ].join("\n");
+
+        try {
+            const result = await this.server.run(prompt, {
+                agent: this.summarizerAgent,
+                deleteAfter: true,
+                tools: {
+                    write: false,
+                    edit: false,
+                    bash: false,
+                },
+            });
+            const llmSummary =
+                result.parts
+                    .filter((part) => part.type === "text")
+                    .map((part) => (part.type === "text" ? part.text : ""))
+                    .join("\n")
+                    .trim() || null;
+            if (!llmSummary) return summary;
+
+            const enriched = {
+                ...summary,
+                llm_summary: llmSummary,
+                llm_summary_agent: this.summarizerAgent,
+            };
+
+            logger.info("x4_summary_agent_applied", {
+                agent: this.summarizerAgent,
+            });
+            return enriched;
+        } catch (error) {
+            const message =
+                error instanceof Error ? error.message : String(error);
+            logger.warn("x4_summary_agent_failed", {
+                agent: this.summarizerAgent,
+                error: message,
+            });
+            return summary;
+        }
     }
 }

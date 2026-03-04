@@ -66,10 +66,10 @@ S = X₁ + X₂ + X₃ + X₄ + X_oc + W₁..W₇ + Dₚ₁ + Dₚ₂ + Eq₁ + 
 
 | Xₙ | 역할 | 계층 | 구현 | 상태 |
 |-----|------|------|------|------|
-| **X₁** | 통신 프로토콜 (user ↔ system) | Wrapper | Telegram Bot (교환 가능) | 미구현 |
-| **X₂** | Task 실행 (Queue + Executor + Loop) | Core | SQLite queue + cron loop | 초기 구현 |
-| **X₃** | OC Interaction (감지 + 판단 + 분기) | Core | Detector + Evaluator + 분기 | 설계 |
-| **X₄** | 판단 맥락 생성 + 라우팅 | Core | Summarizer (맥락 생성) + Router | 설계 |
+| **X₁** | 통신 프로토콜 (user ↔ system) | Wrapper | Telegram Bot (교환 가능) | Telegram ingress adapter(입력 파싱/중복 차단/enqueue) |
+| **X₂** | Task 실행 (Queue + Executor + Loop) | Core | SQLite queue + cron loop + retry/observability | 구현 완료 |
+| **X₃** | OC Interaction (감지 + 판단 + 분기) | Core | Detector + Evaluator + Responder + policy/processor | 구현 완료 |
+| **X₄** | 판단 맥락 생성 + 라우팅 | Core | Summarizer + Router + report/new-task 연계 | 구현 완료 |
 | **X_oc** | 코딩 에이전트 | Core | opencode serve + OmO | 가동 중 |
 
 ### 외부 리소스 (Eq)
@@ -254,11 +254,11 @@ User → X₁(프로토콜) → W₁ → X₂(Queue) → W₂ → X_oc(실행)
    - type별 독립 실행, 같은 type 안에서만 순차 보장
    - cron 폴링 방식으로 pending task 순차 처리
 
-3. **Permission/Question 처리** → **X₃ 모듈로 확정**
+3. **Permission/Question 처리** → **X₃/X₄ 모듈로 구현 완료**
    - 감지: W₃ (`wrapper.listPermissions()` / `wrapper.listQuestions()`) 폴링
    - 판단: W₄ → Eq₁ (별도 LLM client)으로 중요도 판단 (score 1-10)
    - 분기: score ≤ 6 → W₃ → X_oc 자동응답
-          score > 6 → W₅ → X₁ → User → X₁ → W₅ → X₃ → W₃ → X_oc
+          score > 6 → X₄ route → report/new_task 생성 (X₁ 연계는 후속 범위)
 
 ### 미확정
 
@@ -361,9 +361,9 @@ MVP 진행 상태 (`HOMSA.md § 14.1`):
 | MVP | 1cycle 정의 | 상태 |
 |-----|------------|------|
 | **MVP-0** | test input → X₂ → X_oc → X₃/X₄ → state.db | 진행 중 |
-| **MVP-1** | X₁(Telegram) → 주기 → X₁(report) | 미시작 |
+| **MVP-1** | X₁(Telegram) → 주기 → X₁(report) | 진행 중 |
 
-현재 구현: X_oc ✅ · X₂ ✅ · Eq₁ ✅ · X₃ 구현 중 · X₄ 구현 중
+현재 구현: X_oc ✅ · X₂ ✅ · Eq₁ ✅ · X₃ ✅ · X₄ ✅
 
 ---
 
@@ -386,7 +386,7 @@ MVP 진행 상태 (`HOMSA.md § 14.1`):
 
 ## Wrapper 현황 (60개 메서드, 구현 완료)
 
-`.devserver/opencode-server-wrapper.ts`
+`.devserver/src/opencode-server-wrapper.ts`
 - **HOMSA 위치**: W₂/W₃ (커플링) + L'_wrapper (보정 항)
 - **커플링 역할**: Xₙ ↔ X_oc 간 통신 수행
 - **보정 역할**: opencode/OmO 버전 변동을 흡수하여 나머지 S에 ε이 전파되지 않게 하는 경계층
@@ -473,6 +473,6 @@ User (Telegram)
 ---
 
 *Created: 2026-02-25*
-*Updated: 2026-03-03*
+*Updated: 2026-03-04*
 *HOMSA v1.2.1 기반*
 *운영 상태는 docs/operations.md, 백로그는 phase_TODO.md + temp_TODO.md 기준으로 갱신*

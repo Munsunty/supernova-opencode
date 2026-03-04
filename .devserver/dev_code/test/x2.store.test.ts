@@ -30,6 +30,11 @@ describe("X2 Store", () => {
         expect(eq1Only.length).toBe(1);
         expect(eq1Only[0]?.id).toBe(t2.id);
         expect(eq1Only[0]?.type).toBe("classify");
+        expect(eq1Only[0]?.rawResult).toBeNull();
+        expect(eq1Only[0]?.runAgent).toBeNull();
+        expect(eq1Only[0]?.runModel).toBeNull();
+        expect(eq1Only[0]?.summaryAgent).toBeNull();
+        expect(eq1Only[0]?.summaryModel).toBeNull();
 
         store.close();
     });

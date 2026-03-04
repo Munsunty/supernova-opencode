@@ -1,6 +1,6 @@
 # SCHEMA.md
 
-*Last Updated: 2026-03-03*
+*Last Updated: 2026-03-04*
 
 ## 목적
 
@@ -32,14 +32,26 @@
 ```sql
 tasks (
   id          TEXT PRIMARY KEY,
-  type        TEXT,       -- 'classify' | 'omo_request' | 'evaluate' | 'summarize' | 'route' | 'report'
-  prompt      TEXT,
-  status      TEXT,       -- 'pending' | 'running' | 'completed' | 'failed'
-  result      TEXT,       -- execution result / summary / structured JSON
-  parent_id   TEXT,       -- chain reference
-  session_id  TEXT,       -- X_oc session id
-  created_at  DATETIME,
-  updated_at  DATETIME
+  type                  TEXT,       -- 'classify' | 'omo_request' | 'evaluate' | 'summarize' | 'route' | 'report'
+  prompt                TEXT,
+  status                TEXT,       -- 'pending' | 'running' | 'completed' | 'failed'
+  attempts              INTEGER,    -- dispatch/finalize retry count
+  retry_at              INTEGER,    -- retry schedule epoch ms
+  session_id            TEXT,       -- X_oc session id
+  request_message_id    TEXT,       -- tracked user message id
+  assistant_message_id  TEXT,       -- tracked assistant message id
+  raw_result            TEXT,       -- assistant 원문(모니터링 전송용)
+  result                TEXT,       -- 요약/구조화 결과 (사용자 요약 전송용)
+  error                 TEXT,
+  run_agent             TEXT,       -- 실행 경로 agent (예: spark, eq1)
+  run_model             TEXT,       -- 실행 경로 model
+  summary_agent         TEXT,       -- 요약 생성 agent (예: x2-summarizer, x2-local)
+  summary_model         TEXT,       -- 요약 생성 model
+  source                TEXT,
+  started_at            INTEGER,
+  completed_at          INTEGER,
+  created_at            DATETIME,
+  updated_at            DATETIME
 )
 ```
 
@@ -205,6 +217,37 @@ metrics_events (
   - `opencode_health_failed`
 - `payload.phase`: `check_started` | `retry` | `check_succeeded` | `check_failed`
 - `payload.attempt`, `payload.maxAttempts`, `payload.nextDelayMs`, `payload.error` (옵션)
+
+### `inbound_received` (`metrics_events.event_type = inbound_received`)
+
+- `trace_id`: `event_id`
+- `source`: `x1` source label (`x1_telegram` 등)
+- `status`: 없음
+- `reason`: `accepted`
+- `payload.event_id`: 이벤트 id
+- `payload.task_id`: 생성된 task id
+- `payload.event_text_preview`: 메시지 앞부분 미리보기
+- `payload.channel`: ingress 채널 (`telegram`, ...)
+
+### `inbound_invalid` (`metrics_events.event_type = inbound_invalid`)
+
+- `trace_id`: `event_id`
+- `source`: `x1` source label
+- `status`: 없음
+- `reason`: invalid reason 문자열
+- `payload.event_id`: 이벤트 id
+- `payload.reason`: 검증 실패 사유
+- `payload.channel`: ingress 채널
+
+### `inbound_duplicate` (`metrics_events.event_type = inbound_duplicate`)
+
+- `trace_id`: `event_id`
+- `source`: `x1` source label
+- `status`: 없음
+- `reason`: `event exists`
+- `payload.event_id`: 이벤트 id
+- `payload.reason`: 중복 판정 상세
+- `payload.channel`: ingress 채널
 
 ### `task_state_transition` (`metrics_events.event_type = task_state_transition`)
 

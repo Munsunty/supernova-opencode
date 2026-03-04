@@ -14,6 +14,7 @@ interface WorkerOptions {
     intervalMs: number;
     baseUrl: string;
     maxProcessPerTick: number;
+    x4SummarizerAgent: string | null;
 }
 
 const logger = createLogger("X3.Worker");
@@ -27,12 +28,30 @@ function parseJsonPolicy(raw: string | undefined): unknown | undefined {
     }
 }
 
+function parseOptionalAgent(
+    raw: string | undefined,
+    fallback: string | null,
+): string | null {
+    if (raw === undefined) return fallback;
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    const lowered = trimmed.toLowerCase();
+    if (lowered === "off" || lowered === "none" || lowered === "null") {
+        return null;
+    }
+    return trimmed;
+}
+
 function parseArgs(argv: string[]): WorkerOptions {
     const options: WorkerOptions = {
         once: false,
         intervalMs: 3000,
         baseUrl: process.env.OPENCODE_BASE_URL ?? "http://127.0.0.1:4996",
         maxProcessPerTick: 10,
+        x4SummarizerAgent: parseOptionalAgent(
+            process.env.X4_SUMMARIZER_AGENT,
+            "x4-summarizer",
+        ),
     };
 
     for (let i = 0; i < argv.length; i++) {
@@ -57,6 +76,17 @@ function parseArgs(argv: string[]): WorkerOptions {
                 if (!next) throw new Error("--max-process requires a number");
                 options.maxProcessPerTick = Number(next);
                 i++;
+                break;
+            case "--x4-summarizer-agent":
+                if (!next)
+                    throw new Error(
+                        "--x4-summarizer-agent requires an agent name",
+                    );
+                options.x4SummarizerAgent = parseOptionalAgent(next, null);
+                i++;
+                break;
+            case "--no-x4-summarizer-agent":
+                options.x4SummarizerAgent = null;
                 break;
             case "--help":
                 printHelp();
@@ -88,6 +118,8 @@ Options:
   --interval <ms>        Poll interval for daemon mode (default: 3000)
   --base-url <url>       OpenCode base URL (default: http://127.0.0.1:4996)
   --max-process <n>      Max pending interactions to process per tick (default: 10)
+  --x4-summarizer-agent <name> Use agent for X4 summary enrichment (default: x4-summarizer)
+  --no-x4-summarizer-agent Disable X4 summary agent enrichment
   --help                 Show this help`);
 }
 
@@ -137,7 +169,10 @@ async function main() {
     try {
         const eq1Client = createEq1ClientFromEnv();
         const evaluator = new InteractionEvaluator(eq1Client);
-        const x4Router = new X4Router(store, eq1Client);
+        const x4Router = new X4Router(store, eq1Client, {
+            server,
+            summarizerAgent: options.x4SummarizerAgent,
+        });
         const autoReplyPolicy = resolveAutoReplyPolicy();
         if (autoReplyPolicy.warnings.length > 0) {
             logger.warn("x3_auto_reply_policy_config", {
@@ -212,6 +247,7 @@ async function main() {
     logger.info("detector_loop_started", {
         interval_ms: options.intervalMs,
         max_process: options.maxProcessPerTick,
+        x4_summarizer_agent: options.x4SummarizerAgent,
     });
 
     const shutdown = () => {

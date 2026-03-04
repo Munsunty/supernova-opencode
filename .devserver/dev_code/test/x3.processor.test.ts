@@ -175,4 +175,121 @@ describe("X3 processor (evaluator + responder)", () => {
         expect(answerPayload.error).toContain("permission reply failed");
         store.close();
     });
+
+    test("records interaction processing and transition metrics", async () => {
+        const store = createStore();
+        const eq1 = new FakeEq1Client();
+        const server = new FakeInteractionServer();
+        eq1.outputs.push({
+            score: 2,
+            reason: "safe action",
+            route: "auto",
+            reply: "approved",
+        });
+
+        const created = store.upsertInteraction({
+            type: "permission",
+            requestId: "perm-3",
+            sessionId: "ses-4",
+            payload: JSON.stringify({ requestID: "perm-3" }),
+        });
+
+        const evaluator = new InteractionEvaluator(eq1 as never);
+        const responder = new InteractionResponder(store, server as never);
+        const processor = new InteractionProcessor(store, evaluator, responder);
+
+        const processed = await processor.processNext();
+        expect(processed).toBeDefined();
+        expect(processed?.route).toBe("auto");
+
+        const events = store.listMetricEvents({
+            interactionId: created.interaction.id,
+        });
+        expect(events.length).toBeGreaterThanOrEqual(2);
+
+        const processing = events.find(
+            (event) => event.eventType === "interaction_processing",
+        );
+        const transitions = events.filter(
+            (event) => event.eventType === "interaction_state_transition",
+        );
+        expect(processing).toBeDefined();
+        expect(transitions).toHaveLength(2);
+        expect(transitions[0]?.reason).toBe("respond_auto");
+        expect(
+            transitions.some(
+                (event) => event.reason === "interaction_auto_replied",
+            ),
+        ).toBe(true);
+
+        expect(processing?.interactionId).toBe(created.interaction.id);
+        expect(processing?.reason).toBe("processing_started");
+        expect(processing?.fromState).toBe("pending");
+        expect(processing?.toState).toBe("pending");
+
+        const transition = transitions.find(
+            (event) => event.reason === "respond_auto",
+        );
+        expect(transition?.interactionId).toBe(created.interaction.id);
+        expect(transition?.fromState).toBe("pending");
+        expect(transition?.toState).toBe("answered");
+        const payload = JSON.parse(transition!.payload!);
+        expect(payload.route).toBe("auto");
+        expect(payload.source).toBe("x3_processor");
+        expect(transition?.backlog).toBe(0);
+
+        store.close();
+    });
+
+    test("rejected auto reply records failure reason in transition metric", async () => {
+        const store = createStore();
+        const eq1 = new FakeEq1Client();
+        const server = new FakeInteractionServer();
+        server.throwOnPermissionReply = true;
+        eq1.outputs.push({
+            score: 2,
+            reason: "safe action",
+            route: "auto",
+            reply: "approved",
+        });
+
+        const created = store.upsertInteraction({
+            type: "permission",
+            requestId: "perm-4",
+            sessionId: "ses-5",
+            payload: JSON.stringify({ requestID: "perm-4" }),
+        });
+
+        const evaluator = new InteractionEvaluator(eq1 as never);
+        const responder = new InteractionResponder(store, server as never);
+        const processor = new InteractionProcessor(store, evaluator, responder);
+
+        const processed = await processor.processNext();
+        expect(processed).toBeDefined();
+        expect(processed?.route).toBe("auto");
+
+        const events = store.listMetricEvents({
+            interactionId: created.interaction.id,
+        });
+        expect(events.length).toBeGreaterThanOrEqual(2);
+
+        const transitions = events.filter(
+            (event) => event.eventType === "interaction_state_transition",
+        );
+        expect(transitions).toHaveLength(2);
+        const processorFailure = transitions.find(
+            (event) => event.reason === "respond_auto",
+        );
+        const responderFailure = transitions.find(
+            (event) => event.errorClass === "auto_reply_failed",
+        );
+
+        expect(processorFailure?.toState).toBe("rejected");
+        expect(processorFailure?.reason).toBe("respond_auto");
+        expect(responderFailure?.reason).toBe("interaction_auto_reply_failed");
+        expect(responderFailure?.errorClass).toBe("auto_reply_failed");
+        expect(responderFailure?.payload).toContain("permission reply failed");
+
+        store.close();
+    });
 });

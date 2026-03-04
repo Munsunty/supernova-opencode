@@ -1,6 +1,9 @@
 import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { OpenCodeServer } from "../../src/opencode-server-wrapper";
+import {
+    OpenCodeServer,
+    type PromptOptions,
+} from "../../src/opencode-server-wrapper";
 import { Store, type Task } from "../../src/x2/store";
 
 type Role = "assistant" | "user";
@@ -64,12 +67,24 @@ interface SessionMeasureReport {
     diffSummary: {
         files: number | null;
     } | null;
+    execution: {
+        requestedAgent: string | null;
+        requestedModel: string | null;
+        observedAgent: string | null;
+        observedModel: string | null;
+        observedUserModel: string | null;
+        modelMatch: boolean | null;
+        promptError: string | null;
+    };
 }
 
 interface Args {
     sessionId?: string;
     taskId?: string;
     source?: string;
+    prompt?: string;
+    agent?: string;
+    model?: string;
     linkStore: boolean;
     includeDiff: boolean;
     baseUrl: string;
@@ -88,6 +103,90 @@ function toText(value: unknown): string | null {
 function toRole(value: unknown): Role | null {
     if (value === "assistant" || value === "user") return value;
     return null;
+}
+
+function parseModel(raw: string): NonNullable<PromptOptions["model"]> {
+    const trimmed = raw.trim();
+    const sep = trimmed.indexOf("/");
+    if (sep <= 0 || sep === trimmed.length - 1) {
+        throw new Error("--model requires format provider/model");
+    }
+    return {
+        providerID: trimmed.slice(0, sep).toLowerCase(),
+        modelID: trimmed.slice(sep + 1).toLowerCase(),
+    };
+}
+
+function formatModel(model: PromptOptions["model"]): string | null {
+    if (!model) return null;
+    if (!model.providerID || !model.modelID) return null;
+    return `${model.providerID}/${model.modelID}`;
+}
+
+function toErrorMessage(error: unknown): string | null {
+    if (error instanceof Error) return error.message;
+    if (typeof error === "string" && error.length > 0) return error;
+    return null;
+}
+
+function sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForMessageSettle(
+    server: OpenCodeServer,
+    sessionId: string,
+): Promise<unknown[]> {
+    let messages: unknown = [];
+    for (let attempt = 0; attempt < 8; attempt++) {
+        messages = await server.getMessages(sessionId).catch(() => []);
+        if (Array.isArray(messages) && messages.length > 0) {
+            return messages;
+        }
+        if (attempt < 7) {
+            await sleep(500 + attempt * 300);
+        }
+    }
+    return Array.isArray(messages) ? messages : [];
+}
+
+async function runPromptWithFallback(
+    server: OpenCodeServer,
+    sessionId: string,
+    prompt: string,
+    options: PromptOptions,
+): Promise<string | null> {
+    try {
+        await server.promptAsync(sessionId, prompt, options);
+        try {
+            await server.waitForIdle(sessionId, {
+                interval: 500,
+                timeout: 120_000,
+            });
+        } catch (waitError) {
+            return toErrorMessage(waitError);
+        }
+        return null;
+    } catch (promptError) {
+        try {
+            await server.prompt(sessionId, prompt, options);
+            return null;
+        } catch (fallbackError) {
+            const asyncMsg = toErrorMessage(promptError);
+            const syncMsg = toErrorMessage(fallbackError);
+            if (asyncMsg && syncMsg && asyncMsg !== syncMsg) {
+                return `${asyncMsg} (fallback: ${syncMsg})`;
+            }
+            return asyncMsg ?? syncMsg ?? "Prompt execution failed";
+        }
+    }
+}
+
+function parsePromptOptions(args: Args): PromptOptions {
+    return {
+        ...(args.agent ? { agent: args.agent } : {}),
+        ...(args.model ? { model: parseModel(args.model) } : {}),
+    };
 }
 
 function parseArgs(argv: string[]): Args {
@@ -114,6 +213,22 @@ function parseArgs(argv: string[]): Args {
             case "--source":
                 if (!next) throw new Error("--source requires a value");
                 args.source = next;
+                i++;
+                break;
+            case "--prompt":
+                if (!next) throw new Error("--prompt requires a value");
+                args.prompt = next;
+                i++;
+                break;
+            case "--agent":
+                if (!next) throw new Error("--agent requires a value");
+                args.agent = next;
+                i++;
+                break;
+            case "--model":
+                if (!next) throw new Error("--model requires a value");
+                parseModel(next);
+                args.model = next;
                 i++;
                 break;
             case "--base-url":
@@ -151,11 +266,18 @@ Options:
   --session <id>         force this session id (X_oc only)
   --task <id>            resolve session id from task id
   --source <value>       fallback: latest task by source (default: any)
+  --prompt <text>        run this prompt before measurement
+  --agent <name>         set prompt agent (e.g., build)
+  --model <provider/model> set prompt model (e.g., openai/GPT-5.3-Codex-Spark)
   --base-url <url>       opencode base url (default: http://127.0.0.1:4996)
   --link-store           include task links from state.db (optional)
   --diff                 include session diff summary
   --out <path>           write JSON report to file
-  --help                 show this help`);
+  --help                 show this help
+
+Examples:
+  bun run .devserver/dev_code/script/xoc-session-measure.ts --prompt "요청 내용을 입력" --agent build --model openai/GPT-5.3-Codex-Spark
+  bun run .devserver/dev_code/script/xoc-session-measure.ts --task 123 --prompt "정합성 확인" --agent build --model openai/GPT-5.3-Codex-Spark --diff`);
 }
 
 function findTaskById(tasks: Task[], id: string): Task | null {
@@ -218,6 +340,49 @@ function resolveSessionIdFromStore(args: Args): {
     }
 }
 
+interface ResolvedSessionContext {
+    sessionId: string;
+    linkedTasks: Task[];
+}
+
+function extractModel(
+    info: Record<string, unknown> | undefined,
+): string | null {
+    if (!info) return null;
+
+    const providerFromRoot = toText(info.providerID);
+    const modelFromRoot = toText(info.modelID);
+    if (providerFromRoot !== null && modelFromRoot !== null) {
+        return `${providerFromRoot}/${modelFromRoot}`;
+    }
+
+    const modelObj =
+        (info.model as
+            | { providerID?: unknown; modelID?: unknown }
+            | undefined) ?? {};
+    const provider = toText(modelObj.providerID);
+    const model = toText(modelObj.modelID);
+    if (provider !== null && model !== null) {
+        return `${provider}/${model}`;
+    }
+
+    return null;
+}
+
+async function resolveSessionContext(
+    args: Args,
+    server: OpenCodeServer,
+): Promise<ResolvedSessionContext> {
+    if (args.prompt && !args.sessionId && !args.taskId && !args.source) {
+        const session = await server.createSession(
+            args.prompt.slice(0, 80) || "session-measure",
+        );
+        return { sessionId: session.id, linkedTasks: [] };
+    }
+
+    return resolveSessionIdFromStore(args);
+}
+
 function getToolAgg(map: Map<string, ToolAgg>, name: string): ToolAgg {
     const existing = map.get(name);
     if (existing) return existing;
@@ -235,13 +400,34 @@ function getToolAgg(map: Map<string, ToolAgg>, name: string): ToolAgg {
 }
 
 async function buildReport(args: Args): Promise<SessionMeasureReport> {
-    const resolved = resolveSessionIdFromStore(args);
     const server = OpenCodeServer.getInstance(args.baseUrl);
-    const sessionId = resolved.sessionId;
+    const resolved = await resolveSessionContext(args, server);
+    const promptOptions = parsePromptOptions(args);
+    const requestedModel =
+        formatModel(promptOptions.model) ?? args.model?.trim() ?? null;
+    const requestedAgent = promptOptions.agent ?? null;
+    let promptError: string | null = null;
 
-    const [sessionRaw, messagesRaw, todosRaw] = await Promise.all([
+    if (args.prompt) {
+        promptError = await runPromptWithFallback(
+            server,
+            resolved.sessionId,
+            args.prompt,
+            promptOptions,
+        );
+    }
+
+    const sessionId = resolved.sessionId;
+    const messagesRaw = args.prompt
+        ? await waitForMessageSettle(server, sessionId)
+        : await server.getMessages(sessionId).catch(() => []);
+    if (args.prompt && messagesRaw.length === 0) {
+        promptError =
+            promptError ??
+            "No messages returned after prompt execution (request may have been dropped or OMO bypass route blocked)";
+    }
+    const [sessionRaw, todosRaw] = await Promise.all([
         server.getSession(sessionId),
-        server.getMessages(sessionId),
         server.getSessionTodos(sessionId).catch(() => null),
     ]);
     const diffRaw = args.includeDiff
@@ -265,6 +451,9 @@ async function buildReport(args: Args): Promise<SessionMeasureReport> {
     const toolMap = new Map<string, ToolAgg>();
     let textPartCount = 0;
     let textChars = 0;
+    let observedAgent: string | null = null;
+    let observedModel: string | null = null;
+    let observedUserModel: string | null = null;
 
     for (const msg of messages as Array<Record<string, unknown>>) {
         const info = (msg.info as Record<string, unknown> | undefined) ?? {};
@@ -305,6 +494,12 @@ async function buildReport(args: Args): Promise<SessionMeasureReport> {
                         ? latency
                         : Math.max(assistantLatencyMax, latency);
             }
+            observedAgent = toText(info.agent) ?? observedAgent;
+            observedModel = extractModel(info) ?? observedModel;
+        }
+
+        if (role === "user") {
+            observedUserModel = extractModel(info) ?? observedUserModel;
         }
 
         const parts = Array.isArray(msg.parts) ? msg.parts : [];
@@ -351,6 +546,16 @@ async function buildReport(args: Args): Promise<SessionMeasureReport> {
               files: Array.isArray(diffRaw) ? diffRaw.length : null,
           }
         : null;
+    const normalizedRequestedModel = requestedModel
+        ? requestedModel.toLowerCase()
+        : null;
+    const normalizedObservedModel = observedModel
+        ? observedModel.toLowerCase()
+        : null;
+    const modelMatch =
+        normalizedRequestedModel && normalizedObservedModel
+            ? normalizedRequestedModel === normalizedObservedModel
+            : null;
 
     return {
         schemaVersion: "xoc_session_measure.v1",
@@ -401,6 +606,15 @@ async function buildReport(args: Args): Promise<SessionMeasureReport> {
         },
         todoCount,
         diffSummary,
+        execution: {
+            requestedAgent,
+            requestedModel,
+            observedAgent,
+            observedModel,
+            observedUserModel,
+            modelMatch,
+            promptError,
+        },
     };
 }
 

@@ -17,6 +17,8 @@ export type TaskStatus = "pending" | "running" | "completed" | "failed";
 export type TaskType = "omo_request" | Eq1TaskType | "report";
 export type InteractionType = "permission" | "question";
 export type InteractionStatus = "pending" | "answered" | "rejected";
+export type InboundEventStatus = "received" | "duplicate" | "invalid";
+export type InboundEventChannel = "telegram" | "cli" | (string & {});
 
 export interface Task {
     id: string;
@@ -26,8 +28,15 @@ export interface Task {
     attempts: number;
     retryAt: number | null;
     sessionId: string | null;
+    requestMessageId: string | null;
+    assistantMessageId: string | null;
+    rawResult: string | null;
     result: string | null;
     error: string | null;
+    runAgent: string | null;
+    runModel: string | null;
+    summaryAgent: string | null;
+    summaryModel: string | null;
     source: string;
     startedAt: number | null;
     completedAt: number | null;
@@ -59,6 +68,16 @@ export interface InteractionStats {
     pending: number;
     answered: number;
     rejected: number;
+}
+
+export interface InboundEvent {
+    id: string;
+    channel: InboundEventChannel;
+    eventId: string;
+    source: string;
+    status: InboundEventStatus;
+    payload: string;
+    createdAt: number;
 }
 
 export type MetricStatus =
@@ -97,10 +116,39 @@ export class Store {
     private db: Database;
 
     constructor(dbPath: string = DEFAULT_DB_PATH) {
-        this.db = new Database(dbPath, { create: true });
-        this.db.exec("PRAGMA journal_mode = WAL");
-        this.db.exec("PRAGMA foreign_keys = ON");
-        this.migrate();
+        this.initializeWithRetry(dbPath);
+    }
+
+    private initializeWithRetry(dbPath: string): void {
+        const maxAttempts = 20;
+        const baseDelayMs = 250;
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            const db = new Database(dbPath, { create: true });
+            this.db = db;
+            try {
+                db.exec("PRAGMA busy_timeout = 5000");
+                db.exec("PRAGMA journal_mode = WAL");
+                db.exec("PRAGMA foreign_keys = ON");
+                this.migrate();
+                return;
+            } catch (error) {
+                try {
+                    db.close();
+                } catch {}
+
+                if (attempt >= maxAttempts || !this.isLockedError(error)) {
+                    throw error;
+                }
+                Bun.sleepSync(baseDelayMs * attempt);
+            }
+        }
+    }
+
+    private isLockedError(error: unknown): boolean {
+        if (!(error instanceof Error)) return false;
+        return /database (is )?(locked|busy)|SQLITE_(LOCKED|BUSY)/i.test(
+            error.message,
+        );
     }
 
     private migrate() {
@@ -113,8 +161,15 @@ export class Store {
         attempts INTEGER NOT NULL DEFAULT 0,
         retry_at INTEGER,
         session_id TEXT,
+        request_message_id TEXT,
+        assistant_message_id TEXT,
+        raw_result TEXT,
         result TEXT,
         error TEXT,
+        run_agent TEXT,
+        run_model TEXT,
+        summary_agent TEXT,
+        summary_model TEXT,
         source TEXT NOT NULL DEFAULT 'cli',
         started_at INTEGER,
         completed_at INTEGER,
@@ -127,6 +182,13 @@ export class Store {
         this.ensureColumn("retry_at", "INTEGER");
         this.ensureColumn("started_at", "INTEGER");
         this.ensureColumn("completed_at", "INTEGER");
+        this.ensureColumn("request_message_id", "TEXT");
+        this.ensureColumn("assistant_message_id", "TEXT");
+        this.ensureColumn("raw_result", "TEXT");
+        this.ensureColumn("run_agent", "TEXT");
+        this.ensureColumn("run_model", "TEXT");
+        this.ensureColumn("summary_agent", "TEXT");
+        this.ensureColumn("summary_model", "TEXT");
         this.db.exec(
             `UPDATE tasks SET type = 'omo_request' WHERE type IS NULL OR type = ''`,
         );
@@ -201,6 +263,24 @@ export class Store {
 	    `);
         this.db.exec(`
 	      CREATE INDEX IF NOT EXISTS idx_metrics_events_trace_id ON metrics_events(trace_id)
+	    `);
+        this.db.exec(`
+	      CREATE TABLE IF NOT EXISTS inbound_events (
+	        id TEXT PRIMARY KEY,
+	        channel TEXT NOT NULL,
+	        event_id TEXT NOT NULL,
+	        source TEXT NOT NULL,
+	        status TEXT NOT NULL DEFAULT 'received',
+	        payload TEXT NOT NULL,
+	        created_at INTEGER NOT NULL,
+	        UNIQUE(channel, event_id)
+	      )
+	    `);
+        this.db.exec(`
+	      CREATE INDEX IF NOT EXISTS idx_inbound_events_channel ON inbound_events(channel)
+	    `);
+        this.db.exec(`
+	      CREATE INDEX IF NOT EXISTS idx_inbound_events_created ON inbound_events(created_at)
 	    `);
     }
 
@@ -287,6 +367,35 @@ export class Store {
         return rows.map((r) => this.rowToTask(r));
     }
 
+    findLatestSessionIdBySource(
+        source: string,
+        options: {
+            excludeTaskId?: string;
+        } = {},
+    ): string | null {
+        const where = ["source = ?", "session_id IS NOT NULL"];
+        const params: unknown[] = [source];
+
+        if (options.excludeTaskId) {
+            where.push("id != ?");
+            params.push(options.excludeTaskId);
+        }
+
+        const row = this.db
+            .prepare(
+                `SELECT session_id
+                 FROM tasks
+                 WHERE ${where.join(" AND ")}
+                 ORDER BY created_at DESC
+                 LIMIT 1`,
+            )
+            .get(...params) as { session_id?: unknown } | null;
+
+        if (!row || typeof row.session_id !== "string") return null;
+        const sessionId = row.session_id.trim();
+        return sessionId.length > 0 ? sessionId : null;
+    }
+
     updateTask(
         id: string,
         updates: Partial<
@@ -296,8 +405,15 @@ export class Store {
                 | "attempts"
                 | "retryAt"
                 | "sessionId"
+                | "requestMessageId"
+                | "assistantMessageId"
+                | "rawResult"
                 | "result"
                 | "error"
+                | "runAgent"
+                | "runModel"
+                | "summaryAgent"
+                | "summaryModel"
                 | "startedAt"
                 | "completedAt"
             >
@@ -322,6 +438,18 @@ export class Store {
             sets.push("session_id = ?");
             params.push(updates.sessionId);
         }
+        if (updates.requestMessageId !== undefined) {
+            sets.push("request_message_id = ?");
+            params.push(updates.requestMessageId);
+        }
+        if (updates.assistantMessageId !== undefined) {
+            sets.push("assistant_message_id = ?");
+            params.push(updates.assistantMessageId);
+        }
+        if (updates.rawResult !== undefined) {
+            sets.push("raw_result = ?");
+            params.push(updates.rawResult);
+        }
         if (updates.result !== undefined) {
             sets.push("result = ?");
             params.push(updates.result);
@@ -329,6 +457,22 @@ export class Store {
         if (updates.error !== undefined) {
             sets.push("error = ?");
             params.push(updates.error);
+        }
+        if (updates.runAgent !== undefined) {
+            sets.push("run_agent = ?");
+            params.push(updates.runAgent);
+        }
+        if (updates.runModel !== undefined) {
+            sets.push("run_model = ?");
+            params.push(updates.runModel);
+        }
+        if (updates.summaryAgent !== undefined) {
+            sets.push("summary_agent = ?");
+            params.push(updates.summaryAgent);
+        }
+        if (updates.summaryModel !== undefined) {
+            sets.push("summary_model = ?");
+            params.push(updates.summaryModel);
         }
         if (updates.startedAt !== undefined) {
             sets.push("started_at = ?");
@@ -700,6 +844,112 @@ export class Store {
         return rows.map((row) => this.rowToMetricEvent(row));
     }
 
+    registerInboundEvent(input: {
+        channel: InboundEventChannel;
+        eventId: string;
+        source: string;
+        status?: InboundEventStatus;
+        payload: string;
+    }): { event: InboundEvent; created: boolean } {
+        const now = Date.now();
+        const status = input.status ?? "received";
+        const id = randomUUIDv7();
+        const result = this.db
+            .prepare(
+                `INSERT INTO inbound_events (id, channel, event_id, source, status, payload, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)
+                 ON CONFLICT(channel, event_id) DO NOTHING`,
+            )
+            .run(
+                id,
+                input.channel,
+                input.eventId,
+                input.source,
+                status,
+                input.payload,
+                now,
+            );
+
+        const event = this.getInboundEvent(input.channel, input.eventId);
+        if (!event) {
+            throw new Error(
+                `Failed to register inbound event: ${input.channel}:${input.eventId}`,
+            );
+        }
+
+        return {
+            event,
+            created: result.changes > 0,
+        };
+    }
+
+    getInboundEvent(
+        channel: InboundEventChannel,
+        eventId: string,
+    ): InboundEvent | null {
+        const row = this.db
+            .prepare(
+                `SELECT * FROM inbound_events WHERE channel = ? AND event_id = ?`,
+            )
+            .get(channel, eventId) as Record<string, unknown> | null;
+        return row ? this.rowToInboundEvent(row) : null;
+    }
+
+    listInboundEvents(filter?: {
+        channel?: InboundEventChannel;
+        eventId?: string;
+        status?: InboundEventStatus;
+        limit?: number;
+    }): InboundEvent[] {
+        let sql = "SELECT * FROM inbound_events";
+        const params: unknown[] = [];
+        const wheres: string[] = [];
+
+        if (filter?.channel) {
+            wheres.push("channel = ?");
+            params.push(filter.channel);
+        }
+        if (filter?.eventId) {
+            wheres.push("event_id = ?");
+            params.push(filter.eventId);
+        }
+        if (filter?.status) {
+            wheres.push("status = ?");
+            params.push(filter.status);
+        }
+        if (wheres.length > 0) {
+            sql += ` WHERE ${wheres.join(" AND ")}`;
+        }
+        sql += " ORDER BY created_at DESC";
+
+        if (filter?.limit) {
+            sql += " LIMIT ?";
+            params.push(filter.limit);
+        }
+
+        const rows = this.db.prepare(sql).all(...params) as Record<
+            string,
+            unknown
+        >[];
+        return rows.map((row) => this.rowToInboundEvent(row));
+    }
+
+    updateInboundEventStatus(
+        id: string,
+        status: InboundEventStatus,
+    ): InboundEvent {
+        this.db
+            .prepare("UPDATE inbound_events SET status = ? WHERE id = ?")
+            .run(status, id);
+        const row = this.db
+            .prepare("SELECT * FROM inbound_events WHERE id = ?")
+            .get(id) as Record<string, unknown> | null;
+        if (!row) {
+            throw new Error(`Inbound event not found: ${id}`);
+        }
+        return this.rowToInboundEvent(row);
+    }
+
     close() {
         this.db.close();
     }
@@ -722,8 +972,15 @@ export class Store {
             attempts: Number(row.attempts ?? 0),
             retryAt: (row.retry_at as number) ?? null,
             sessionId: (row.session_id as string) ?? null,
+            requestMessageId: (row.request_message_id as string) ?? null,
+            assistantMessageId: (row.assistant_message_id as string) ?? null,
+            rawResult: (row.raw_result as string) ?? null,
             result: (row.result as string) ?? null,
             error: (row.error as string) ?? null,
+            runAgent: (row.run_agent as string) ?? null,
+            runModel: (row.run_model as string) ?? null,
+            summaryAgent: (row.summary_agent as string) ?? null,
+            summaryModel: (row.summary_model as string) ?? null,
             source: row.source as string,
             startedAt: (row.started_at as number) ?? null,
             completedAt: (row.completed_at as number) ?? null,
@@ -808,6 +1065,24 @@ export class Store {
                     : Number(row.backlog),
             errorClass: (row.error_class as string) ?? null,
             payload: (row.payload as string) ?? null,
+            createdAt: row.created_at as number,
+        };
+    }
+
+    private rowToInboundEvent(row: Record<string, unknown>): InboundEvent {
+        const rawStatus = row.status as string;
+        const normalizedStatus =
+            rawStatus === "received" || rawStatus === "invalid"
+                ? rawStatus
+                : "duplicate";
+
+        return {
+            id: row.id as string,
+            channel: row.channel as InboundEventChannel,
+            eventId: row.event_id as string,
+            source: row.source as string,
+            status: normalizedStatus,
+            payload: row.payload as string,
             createdAt: row.created_at as number,
         };
     }

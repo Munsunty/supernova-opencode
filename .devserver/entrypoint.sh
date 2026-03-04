@@ -24,6 +24,29 @@ OPENCODE_AUTH_IMPORT_MODE="${OPENCODE_AUTH_IMPORT_MODE:-always}"
 OPENCODE_OMO_CONFIG_IMPORT_PATH="${OPENCODE_OMO_CONFIG_IMPORT_PATH:-}"
 OPENCODE_OMO_CONFIG_FILE="${OPENCODE_OMO_CONFIG_FILE:-$OPENCODE_CONFIG_DIR/oh-my-opencode.jsonc}"
 OPENCODE_OMO_CONFIG_IMPORT_MODE="${OPENCODE_OMO_CONFIG_IMPORT_MODE:-always}"
+OPENCODE_X1_WEBHOOK_SCRIPT="${OPENCODE_X1_WEBHOOK_SCRIPT:-/opt/opencode/src/x1/webhook.ts}"
+OPENCODE_X1_WEBHOOK_HOST="${OPENCODE_X1_WEBHOOK_HOST:-0.0.0.0}"
+OPENCODE_X1_WEBHOOK_PORT="${OPENCODE_X1_WEBHOOK_PORT:-5100}"
+OPENCODE_X1_WEBHOOK_PATH="${OPENCODE_X1_WEBHOOK_PATH:-/webhook}"
+OPENCODE_X1_WEBHOOK_SOURCE="${OPENCODE_X1_WEBHOOK_SOURCE:-x1_telegram}"
+OPENCODE_X1_WEBHOOK_TASK_SOURCE="${OPENCODE_X1_WEBHOOK_TASK_SOURCE:-x1_telegram}"
+OPENCODE_X1_WEBHOOK_READY_PATH="${OPENCODE_X1_WEBHOOK_READY_PATH:-/health}"
+OPENCODE_X1_MODE="${OPENCODE_X1_MODE:-poller}"
+OPENCODE_X1_POLLER_SCRIPT="${OPENCODE_X1_POLLER_SCRIPT:-/opt/opencode/src/x1/poller.ts}"
+OPENCODE_X1_POLLER_TOKEN="${OPENCODE_X1_POLLER_TOKEN:-}"
+OPENCODE_X1_BOT_TOKEN="${OPENCODE_X1_BOT_TOKEN:-${OPENCODE_X1_POLLER_TOKEN:-${TELEGRAM_BOT_TOKEN:-}}}"
+OPENCODE_X1_POLLER_SOURCE="${OPENCODE_X1_POLLER_SOURCE:-${OPENCODE_X1_WEBHOOK_SOURCE:-x1_telegram}}"
+OPENCODE_X1_POLLER_TASK_SOURCE="${OPENCODE_X1_POLLER_TASK_SOURCE:-${OPENCODE_X1_WEBHOOK_TASK_SOURCE:-x1_telegram}}"
+OPENCODE_X1_POLLER_ALLOWED_USER_IDS="${OPENCODE_X1_POLLER_ALLOWED_USER_IDS:-}"
+OPENCODE_X1_POLL_INTERVAL_MS="${OPENCODE_X1_POLL_INTERVAL_MS:-}"
+OPENCODE_X1_POLL_TIMEOUT_SEC="${OPENCODE_X1_POLL_TIMEOUT_SEC:-}"
+OPENCODE_X1_POLL_LIMIT="${OPENCODE_X1_POLL_LIMIT:-}"
+OPENCODE_X1_API_BASE="${OPENCODE_X1_API_BASE:-}"
+OPENCODE_X3_WORKER_SCRIPT="${OPENCODE_X3_WORKER_SCRIPT:-/opt/opencode/src/x3/worker.ts}"
+X2_TELEGRAM_REPORT="${X2_TELEGRAM_REPORT:-1}"
+
+export OPENCODE_X1_BOT_TOKEN
+export X2_TELEGRAM_REPORT
 
 mkdir -p "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_CACHE_HOME"
 
@@ -168,6 +191,8 @@ DASHBOARD_PID=""
 DASHBOARD_PROXY_PID=""
 OPENCODE_PID=""
 X2_PID=""
+X1_PID=""
+X3_PID=""
 
 DASHBOARD_ENABLED="${OPENCODE_DASHBOARD_ENABLED:-1}"
 DASHBOARD_PUBLIC_PORT="${OPENCODE_DASHBOARD_PORT:-51234}"
@@ -178,8 +203,21 @@ if [ "$DASHBOARD_PROXY_ENABLED" = "1" ]; then
 fi
 
 X2_ENABLED="${OPENCODE_X2_ENABLED:-1}"
+X1_ENABLED="${OPENCODE_X1_ENABLED:-1}"
+X3_ENABLED="${OPENCODE_X3_ENABLED:-1}"
+X3_INTERVAL_MS="${OPENCODE_X3_INTERVAL_MS:-3000}"
+X3_MAX_PROCESS="${OPENCODE_X3_MAX_PROCESS:-10}"
 READY_TIMEOUT_MS="${OPENCODE_READY_TIMEOUT_MS:-30000}"
 READY_INTERVAL_MS="${OPENCODE_READY_INTERVAL_MS:-500}"
+
+case "$OPENCODE_X1_MODE" in
+  poller|webhook|off)
+    ;;
+  *)
+    echo "ERROR: invalid OPENCODE_X1_MODE=$OPENCODE_X1_MODE (allowed: poller, webhook, off)"
+    exit 1
+    ;;
+esac
 
 cleanup() {
   local pids=()
@@ -191,6 +229,12 @@ cleanup() {
   fi
   if [ -n "$X2_PID" ]; then
     pids+=("$X2_PID")
+  fi
+  if [ -n "$X1_PID" ]; then
+    pids+=("$X1_PID")
+  fi
+  if [ -n "$X3_PID" ]; then
+    pids+=("$X3_PID")
   fi
   if [ -n "$OPENCODE_PID" ]; then
     pids+=("$OPENCODE_PID")
@@ -271,9 +315,13 @@ run_readiness_checks() {
   echo "Ready: opencode"
 
   if [ "$DASHBOARD_ENABLED" = "1" ]; then
-    ensure_pid_alive "dashboard" "$DASHBOARD_PID"
+    if ! ensure_pid_alive "dashboard" "$DASHBOARD_PID"; then
+      return 1
+    fi
     if [ "$DASHBOARD_PROXY_ENABLED" = "1" ]; then
-      ensure_pid_alive "dashboard_proxy" "$DASHBOARD_PROXY_PID"
+      if ! ensure_pid_alive "dashboard_proxy" "$DASHBOARD_PROXY_PID"; then
+        return 1
+      fi
       if ! wait_http_ready "dashboard_proxy" "http://${READINESS_HOST}:${DASHBOARD_PUBLIC_PORT}${DASHBOARD_READY_PATH}"; then
         echo "ERROR: dashboard proxy readiness failed"
         return 1
@@ -289,8 +337,33 @@ run_readiness_checks() {
   fi
 
   if [ "$X2_ENABLED" = "1" ]; then
-    ensure_pid_alive "x2_worker" "$X2_PID"
+    if ! ensure_pid_alive "x2_worker" "$X2_PID"; then
+      return 1
+    fi
     echo "Ready: x2 worker process"
+  fi
+
+  if [ "$X1_ENABLED" = "1" ] && [ "$OPENCODE_X1_MODE" = "webhook" ]; then
+    if ! ensure_pid_alive "x1_webhook" "$X1_PID"; then
+      return 1
+    fi
+    if ! wait_http_ready "x1_webhook" "http://${READINESS_HOST}:${OPENCODE_X1_WEBHOOK_PORT}${OPENCODE_X1_WEBHOOK_READY_PATH}"; then
+      echo "ERROR: x1 webhook readiness failed"
+      return 1
+    fi
+    echo "Ready: x1 webhook"
+  elif [ "$X1_ENABLED" = "1" ] && [ "$OPENCODE_X1_MODE" = "poller" ]; then
+    if ! ensure_pid_alive "x1_poller" "$X1_PID"; then
+      return 1
+    fi
+    echo "Ready: x1 poller"
+  fi
+
+  if [ "$X3_ENABLED" = "1" ]; then
+    if ! ensure_pid_alive "x3_worker" "$X3_PID"; then
+      return 1
+    fi
+    echo "Ready: x3 worker process"
   fi
 
   echo "Startup readiness check passed"
@@ -347,14 +420,122 @@ if [ "$X2_ENABLED" = "1" ]; then
   echo "X2 worker started (pid: $X2_PID, base_url: $X2_BASE_URL)"
 fi
 
+if [ "$X1_ENABLED" = "1" ]; then
+  if [ "$OPENCODE_X1_MODE" = "poller" ]; then
+    if [ ! -f "$OPENCODE_X1_POLLER_SCRIPT" ]; then
+      echo "ERROR: X1 poller script not found: $OPENCODE_X1_POLLER_SCRIPT"
+      exit 1
+    fi
+
+    echo "Starting X1 poller: $OPENCODE_X1_POLLER_SCRIPT"
+    if [ -n "${OPENCODE_X1_POLLER_TOKEN:-}" ]; then
+      poller_token_args=(--token "$OPENCODE_X1_POLLER_TOKEN")
+    else
+      poller_token_args=()
+    fi
+    if [ -n "${OPENCODE_X1_POLLER_ALLOWED_USER_IDS:-}" ]; then
+      poller_allowed_users_args=(--allowed-users "$OPENCODE_X1_POLLER_ALLOWED_USER_IDS")
+    else
+      poller_allowed_users_args=()
+    fi
+    if [ -n "${OPENCODE_X1_POLL_INTERVAL_MS:-}" ]; then
+      poller_poll_interval_args=(--poll-interval "$OPENCODE_X1_POLL_INTERVAL_MS")
+    else
+      poller_poll_interval_args=()
+    fi
+    if [ -n "${OPENCODE_X1_POLL_TIMEOUT_SEC:-}" ]; then
+      poller_poll_timeout_args=(--poll-timeout "$OPENCODE_X1_POLL_TIMEOUT_SEC")
+    else
+      poller_poll_timeout_args=()
+    fi
+    if [ -n "${OPENCODE_X1_POLL_LIMIT:-}" ]; then
+      poller_poll_limit_args=(--poll-limit "$OPENCODE_X1_POLL_LIMIT")
+    else
+      poller_poll_limit_args=()
+    fi
+    if [ -n "${OPENCODE_X1_API_BASE:-}" ]; then
+      poller_api_base_args=(--api-base "$OPENCODE_X1_API_BASE")
+    else
+      poller_api_base_args=()
+    fi
+
+    bun run "$OPENCODE_X1_POLLER_SCRIPT" \
+      "${poller_token_args[@]}" \
+      --source "$OPENCODE_X1_POLLER_SOURCE" \
+      --task-source "$OPENCODE_X1_POLLER_TASK_SOURCE" \
+      "${poller_allowed_users_args[@]}" \
+      "${poller_poll_interval_args[@]}" \
+      "${poller_poll_timeout_args[@]}" \
+      "${poller_poll_limit_args[@]}" \
+      "${poller_api_base_args[@]}" \
+      ${X2_DB_PATH:+"--db" "$X2_DB_PATH"} \
+      &
+    X1_PID=$!
+    echo "X1 poller started (pid: $X1_PID, source=$OPENCODE_X1_POLLER_SOURCE)"
+  elif [ "$OPENCODE_X1_MODE" = "webhook" ]; then
+    if [ ! -f "$OPENCODE_X1_WEBHOOK_SCRIPT" ]; then
+      echo "ERROR: X1 webhook script not found: $OPENCODE_X1_WEBHOOK_SCRIPT"
+      exit 1
+    fi
+
+    echo "Starting X1 webhook: $OPENCODE_X1_WEBHOOK_SCRIPT"
+    if [ -n "${X2_DB_PATH:-}" ]; then
+      bun run "$OPENCODE_X1_WEBHOOK_SCRIPT" \
+        --host "$OPENCODE_X1_WEBHOOK_HOST" \
+        --port "$OPENCODE_X1_WEBHOOK_PORT" \
+        --path "$OPENCODE_X1_WEBHOOK_PATH" \
+        --source "$OPENCODE_X1_WEBHOOK_SOURCE" \
+        --task-source "$OPENCODE_X1_WEBHOOK_TASK_SOURCE" \
+        --db "$X2_DB_PATH" &
+    else
+      bun run "$OPENCODE_X1_WEBHOOK_SCRIPT" \
+        --host "$OPENCODE_X1_WEBHOOK_HOST" \
+        --port "$OPENCODE_X1_WEBHOOK_PORT" \
+        --path "$OPENCODE_X1_WEBHOOK_PATH" \
+        --source "$OPENCODE_X1_WEBHOOK_SOURCE" \
+        --task-source "$OPENCODE_X1_WEBHOOK_TASK_SOURCE" &
+    fi
+    X1_PID=$!
+    echo "X1 webhook started (pid: $X1_PID, bind=${OPENCODE_X1_WEBHOOK_HOST}:${OPENCODE_X1_WEBHOOK_PORT}${OPENCODE_X1_WEBHOOK_PATH})"
+  elif [ "$OPENCODE_X1_MODE" = "off" ]; then
+    echo "X1 disabled by OPENCODE_X1_MODE=off"
+  else
+    echo "ERROR: unsupported OPENCODE_X1_MODE=$OPENCODE_X1_MODE"
+    exit 1
+  fi
+fi
+
+if [ "$X3_ENABLED" = "1" ]; then
+  X3_WORKER_SCRIPT="${OPENCODE_X3_WORKER_SCRIPT:-/opt/opencode/src/x3/worker.ts}"
+  if [ ! -f "$X3_WORKER_SCRIPT" ]; then
+    echo "ERROR: X3 worker script not found: $X3_WORKER_SCRIPT"
+    exit 1
+  fi
+
+  X3_BASE_URL="${OPENCODE_X3_BASE_URL:-http://127.0.0.1:${OPENCODE_PORT}}"
+  echo "Starting X3 worker: $X3_WORKER_SCRIPT"
+  bun run "$X3_WORKER_SCRIPT" \
+    --base-url "$X3_BASE_URL" \
+    --interval "$X3_INTERVAL_MS" \
+    --max-process "$X3_MAX_PROCESS" &
+  X3_PID=$!
+  echo "X3 worker started (pid: $X3_PID, base_url: $X3_BASE_URL)"
+fi
+
 if ! run_readiness_checks; then
   echo "ERROR: startup readiness failed. tearing down processes."
   exit 1
 fi
 
 WAIT_PIDS=("$OPENCODE_PID")
+if [ -n "$X1_PID" ]; then
+  WAIT_PIDS+=("$X1_PID")
+fi
 if [ -n "$X2_PID" ]; then
   WAIT_PIDS+=("$X2_PID")
+fi
+if [ -n "$X3_PID" ]; then
+  WAIT_PIDS+=("$X3_PID")
 fi
 if [ -n "$DASHBOARD_PID" ]; then
   WAIT_PIDS+=("$DASHBOARD_PID")

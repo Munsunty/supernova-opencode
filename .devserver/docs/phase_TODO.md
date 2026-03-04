@@ -1,10 +1,9 @@
 # phase_TODO.md
 
-*Last Updated: 2026-03-03*
+*Last Updated: 2026-03-04*
 
-Status: CLOSED
-Close reason: PS-20260303-01 close (P1 3건 완료, P2 Docs/Metrics 완료, P2-X1 보류 확정)
-PhaseStamp: PS-20260303-01
+Status: OPEN
+PhaseStamp: PS-20260304-06
 
 ## 목적
 
@@ -83,21 +82,24 @@ PhaseStamp: PS-20260303-01
 
 ## Previous (Confirmed)
 
-- 2026-02-26: `eq1` provider adapter/categorized retry/result schema 확정 및 live smoke(`cerebras`) PASS
-- 2026-02-26: `X2` task 상태 전이/재시도/관측 로그 정책 확정
-- 2026-02-26: `X3` detector/evaluator/responder 루프 구현 완료
-- 2026-02-26: `X4` summarize/router + interaction queue/report 소비 경로 연결 완료
+- 2026-03-04: `PS-20260304-05` close (`PH-P1-X1-002`, `PH-P1-X2-002`, `PH-P1-DOCS-002` 완료, summarizer agent runtime 연결 반영)
+- 2026-03-04: `PS-20260304-02` close (`P2` X1/X2 백로그가 미완료 상태로 다음 cycle 대상 유지)
+- 2026-03-04: `PS-20260304-03` close (`P1` X2 완료, `PH-P2-X1-001` 다음 cycle로 보류)
+- 2026-03-03: `PS-20260303-01` close (`P1` 3건 완료, `PH-P2-DOCS-001`, `PH-P2-METRICS-001` 완료, `PH-P2-X1-001` 다음 cycle 후순위 보류 확정)
+- 2026-03-03: `PS-20260303-01` close와 동시, `eq1` provider adapter/categorized retry/result schema 확정 및 live smoke(`cerebras`) PASS
+- 2026-03-03: `PS-20260303-01` close와 동시, `X2` task 상태 전이/재시도/관측 로그 정책 확정
+- 2026-03-03: `PS-20260303-01` close와 동시, `X3` detector/evaluator/responder 루프 구현 완료
+- 2026-03-03: `PS-20260303-01` close와 동시, `X4` summarize/router + interaction queue/report 소비 경로 연결 완료
+- 2026-03-04: `PS-20260304-01` close (`P2` X3/X4 완료, PH-P2-X1-001 다음 cycle 보류)
 - 2026-03-03: Podman 안정화 스프린트 close 확정 (`doctor/smoke` PASS, infra block 해제)
 - 2026-03-03: 이전 `temp_TODO.md` close 및 `archive/temp_TODO.2026-03-03.closed.md` 이관 완료
-- 2026-03-03: `PH-P2-X1-001` close(이번 phase 제외) — Telegram user input → task enqueue 경로 어댑터 구현 범위 재검토를 다음 cycle 재평가 대상으로 보류 처리
-- 2026-03-03: P1 완료(PH-P1-X3-001, PH-P1-X4-001, PH-P1-X2-001)
-- 2026-03-03: P2 Docs/Metrics 완료(PH-P2-DOCS-001, PH-P2-METRICS-001)
+- 2026-03-04: `PS-20260304-01` 종료 후 `PS-20260304-02` 시작 (shift-up). 기존 종료 이력은 `PS-20260304-01` archived 항목 유지.
+- 2026-03-04: `PS-20260304-04` close (`PH-P2-X1-001` 완료, `x1` Telegram 인입 파이프라인 적용 확인)
 
 ## Present (Confirmed)
-PS-20260303-01
-  - [x] [P1][X3] permission/question auto-reply 임계값 정책 표준화 (`threshold`, `fallback`, `auto_reply_strategy`) `PhaseRef: PH-P1-X3-001`
-  - [x] [P1][X4] summarize → route 입출력 스키마 고정 (`schema_version`, `request_hash`, `parent_id`) `PhaseRef: PH-P1-X4-001`
-  - [x] [P1][X2] queue dispatch/finalize 상태 전이 로그 키 통일 (`trace_id`, `task_id`, `from`, `to`, `reason`) `PhaseRef: PH-P1-X2-001`
+PS-20260304-06
+
+- `PH-P1-X2-003` [완료] Telegram 결과 송신을 `monitor(raw)` + `summary(meta)` 2단 포맷으로 분리하고 summary 메시지에 실행/요약 `agent`/`model` 메타 포함
 
 ## Next (Variable Phase-Backlog)
 
@@ -105,7 +107,7 @@ PS-20260303-01
 주의: 항목 추가/삭제/우선순위 변경은 정상이다.
 주의: 단, `temp_TODO.md` 단계에서는 본 구간을 직접 변경하지 않는다.
 
-- 없음
+- 없음 (다음 phase 후보 선별 대기)
 
 ## Detail Handoff
 
@@ -128,4 +130,17 @@ PS-20260303-01
 
 ## Archive Log
 
+- 2026-03-04: `PS-20260303-01` close 정식 반영 및 `PS-20260304-01` phase 시작, `Present` reset/`Next` 갱신
+- 2026-03-04: `PS-20260304-01` Next→Present 이관(`PH-P2-X3-001`, `PH-P2-X4-001`) 반영. `X1`은 Next 백로그로 보류 유지
 - 2026-03-03: `PH-P2-X1-001`는 다음 cycle 후보로 후순위 보류 결정
+- 2026-03-04: `PH-P2-X3-001`, `PH-P2-X4-001` 실행 완료 반영 (`temp_TODO.md` Done 반영 확인)
+- 2026-03-04: `PS-20260304-01` phase close 완료 (`temp_TODO.md` archived: `temp_TODO.2026-03-04.PS-20260304-01.20260304-120425.closed.md`)
+- 2026-03-04: `PS-20260304-02` phase close 완료 (`temp_TODO.md` archived: `temp_TODO.2026-03-04.PS-20260304-02.20260304-135450.closed.md`)
+- 2026-03-04: `PS-20260304-03` phase close 완료 (`temp_TODO.md` archived: `temp_TODO.2026-03-04.PS-20260304-03.20260304-135909.closed.md`)
+- 2026-03-04: `PS-20260304-04` phase 시작 (`PS-20260304-03` 종료 상태 반영, `Present` reset/`Next` 갱신)
+- 2026-03-04: `PS-20260304-04` phase close 완료 (`PH-P2-X1-001` 완료, `temp_TODO.md` archived: `archive/temp_TODO.2026-03-04.PS-20260304-04.20260304-140019.closed.md`)
+- 2026-03-04: `PS-20260304-05` phase 시작 (`PS-20260304-04` 종료 상태를 이전으로 고정, `temp_TODO.md` 신규 오픈 생성)
+- 2026-03-04: `PS-20260304-05` Present 갱신 (`PH-P1-X1-002`, `PH-P1-X2-002`, `PH-P1-DOCS-002`) 및 `temp_TODO.md` 스냅샷/Done 동기화
+- 2026-03-04: `PS-20260304-05` `PH-P1-DOCS-002` 범위 확장 완료 (`x2-summarizer`/`x4-summarizer` runtime agent 연결 + worker/env 옵션 + 테스트 PASS)
+- 2026-03-04: `PS-20260304-05` phase close 완료 (`temp_TODO.md` archived: `archive/temp_TODO.2026-03-04.PS-20260304-05.20260304-161344.closed.md`)
+- 2026-03-04: `PS-20260304-06` phase 시작 (`PS-20260304-05` 종료 상태를 Previous로 고정, `temp_TODO.md` 신규 오픈 생성)

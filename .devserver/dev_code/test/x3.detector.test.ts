@@ -83,7 +83,9 @@ describe("X3 InteractionDetector", () => {
         server.permissions = [
             { requestID: "perm-1", sessionID: "ses-1", action: "read" },
         ];
-        server.questions = [{ requestID: "q-1", sessionID: "ses-2", text: "?" }];
+        server.questions = [
+            { requestID: "q-1", sessionID: "ses-2", text: "?" },
+        ];
 
         const first = await detector.pollOnce();
         const second = await detector.pollOnce();
@@ -114,6 +116,41 @@ describe("X3 InteractionDetector", () => {
 
         const all = store.listInteractions();
         expect(all.length).toBe(0);
+        store.close();
+    });
+
+    test("pollOnce emits interaction_poll metric event with captured counters", async () => {
+        const store = createStore();
+        const server = new FakeInteractionServer();
+        const detector = new InteractionDetector(store, server);
+
+        server.permissions = [{ requestID: "perm-1", sessionID: "ses-1" }];
+        server.questions = [{ requestID: "q-1", sessionID: "ses-2" }];
+
+        const stats = await detector.pollOnce();
+        expect(stats.seen).toBe(2);
+        expect(stats.enqueued).toBe(2);
+
+        const events = store.listMetricEvents({
+            eventType: "interaction_poll",
+        });
+        expect(events.length).toBe(1);
+        expect(events[0]).toBeDefined();
+        expect(events[0]!.source).toBe("x3_worker");
+        expect(events[0]!.status).toBe("healthy");
+        expect(events[0]!.reason).toBe("poll_done");
+        expect(events[0]!.fromState).toBeNull();
+        expect(events[0]!.toState).toBeNull();
+        expect(events[0]!.traceId).toStartWith("x3_detector_");
+        expect(events[0]!.interactionId).toBeNull();
+        expect(events[0]!.payload).toBeString();
+
+        const payload = JSON.parse(events[0]!.payload!);
+        expect(payload.source).toBe("x3_detector");
+        expect(payload.seen).toBe(2);
+        expect(payload.enqueued).toBe(2);
+        expect(payload.type).toBe("poll_once");
+
         store.close();
     });
 });
