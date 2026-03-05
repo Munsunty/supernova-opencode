@@ -17,7 +17,7 @@ RUN bun install --frozen-lockfile \
     && mkdir -p /srv/opencode/config /srv/opencode/data /srv/opencode/cache
 
 COPY src /opt/opencode/src
-COPY opencode.json /opt/opencode/opencode.template.json
+COPY run-sync/opencode.json /opt/opencode/opencode.seed.json
 COPY run-sync/templates /opt/opencode/templates
 
 COPY entrypoint.sh /usr/local/bin/opencode-entrypoint

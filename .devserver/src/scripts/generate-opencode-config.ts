@@ -88,24 +88,38 @@ function main() {
     const projectGlob = `${projectReal}/**`;
     const devserverAbsGlob = `${projectReal}/.devserver/**`;
 
-    const runtimePermission: JsonObject = {
-        ...basePermission,
-        external_directory: {
+    // 템플릿에 permission이 정의되어 있으면 그대로 존중하고,
+    // 없는 경우에만 기존 안전 기본값을 채운다.
+    const runtimePermission: JsonObject = { ...basePermission };
+    if (!("external_directory" in runtimePermission)) {
+        runtimePermission.external_directory = {
             "*": "deny",
             [projectGlob]: "allow",
             [devserverAbsGlob]: "deny",
-        },
-        read: buildToolRule(projectGlob, devserverAbsGlob),
-        edit: buildToolRule(projectGlob, devserverAbsGlob),
-        glob: buildToolRule(projectGlob, devserverAbsGlob),
-        grep: buildToolRule(projectGlob, devserverAbsGlob),
-        list: buildToolRule(projectGlob, devserverAbsGlob),
-        // bash는 명령 문자열 패턴 기반이라 안전하게 ask 기본값 사용
-        bash: {
+        };
+    }
+    if (!("read" in runtimePermission)) {
+        runtimePermission.read = buildToolRule(projectGlob, devserverAbsGlob);
+    }
+    if (!("edit" in runtimePermission)) {
+        runtimePermission.edit = buildToolRule(projectGlob, devserverAbsGlob);
+    }
+    if (!("glob" in runtimePermission)) {
+        runtimePermission.glob = buildToolRule(projectGlob, devserverAbsGlob);
+    }
+    if (!("grep" in runtimePermission)) {
+        runtimePermission.grep = buildToolRule(projectGlob, devserverAbsGlob);
+    }
+    if (!("list" in runtimePermission)) {
+        runtimePermission.list = buildToolRule(projectGlob, devserverAbsGlob);
+    }
+    if (!("bash" in runtimePermission)) {
+        // bash는 명령 문자열 패턴 기반이라 기본값은 ask.
+        runtimePermission.bash = {
             "*": "ask",
             "*.devserver*": "deny",
-        },
-    };
+        };
+    }
 
     const runtime: JsonObject = {
         ...base,

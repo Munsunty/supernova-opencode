@@ -72,10 +72,9 @@ bun run dev:smoke
 - `OPENCODE_READY_TIMEOUT_MS`, `OPENCODE_READY_INTERVAL_MS`: readiness 타이밍
 - `OPENCODE_HEALTH_PATH`: opencode readiness path (기본 `/global/health`)
 - `OPENCODE_READY_HOST`: readiness 호출 host (기본 `127.0.0.1`)
-- `OPENCODE_CONFIG_TEMPLATE`: 초기 config 템플릿 파일 경로 (기본 `/opt/opencode/opencode.template.json`)
-- `OPENCODE_CONFIG_CONTENT`: 초기 config JSON 문자열 직접 주입 (템플릿보다 우선)
-- `OPENCODE_CONFIG_GENERATE_ON_START`: 시작 시 템플릿 기반 runtime config 재생성 여부 (`0|1`, 기본 `1`)
-- `OPENCODE_CONFIG_GENERATOR_SCRIPT`: runtime config 생성 스크립트 경로 (기본 `/opt/opencode/src/scripts/generate-opencode-config.ts`)
+- `OPENCODE_CONFIG_CONTENT`: 초기 config JSON 문자열 직접 주입 (seed보다 우선)
+- `OPENCODE_CONFIG_IMPORT_PATH`: OpenCode config seed 경로 (기본: `dev-up`이 `/run/opencode-seed/opencode.json`로 주입)
+- `OPENCODE_CONFIG_IMPORT_MODE`: OpenCode config seed import 모드 (`always|if-missing|off`, 기본 `always`)
 - `OPENCODE_DASHBOARD_BIN`, `OPENCODE_DASHBOARD_PACKAGE`: dashboard 실행 바이너리/패키지 오버라이드
 - `OPENCODE_DASHBOARD_PROXY_SCRIPT`: dashboard proxy 스크립트 경로 (기본 `/opt/opencode/src/scripts/dashboard-proxy.ts`)
 - `OPENCODE_DASHBOARD_READY_PATH`: dashboard readiness path (기본 `/`)

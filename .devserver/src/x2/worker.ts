@@ -201,19 +201,24 @@ function parseArgs(argv: string[]): WorkerOptions {
         enqueuePrompt: null,
         enqueueType: "omo_request",
         source: "cli",
-        bypassAgent: parseOptionalAgent(process.env.X2_OMO_BYPASS_AGENT, null),
-        bypassModel: parseOptionalBypassModel(process.env.X2_OMO_BYPASS_MODEL),
+        bypassAgent: parseOptionalAgent(
+            process.env.X2_AGENT_BYPASS_AGENT,
+            null,
+        ),
+        bypassModel: parseOptionalBypassModel(
+            process.env.X2_AGENT_BYPASS_MODEL,
+        ),
         agentRoutingMode: parseRoutingMode(
-            process.env.X2_OMO_AGENT_ROUTING,
+            process.env.X2_AGENT_ROUTING,
             "auto",
         ),
         simpleAgent: parseOptionalAgent(
-            process.env.X2_OMO_SIMPLE_AGENT,
+            process.env.X2_AGENT_SIMPLE_AGENT,
             "spark",
         ),
         complexAgent: parseOptionalAgent(
-            process.env.X2_OMO_COMPLEX_AGENT,
-            "sisyphus",
+            process.env.X2_AGENT_COMPLEX_AGENT,
+            "oholiab",
         ),
         summarizerAgent: parseOptionalAgent(
             process.env.X2_SUMMARIZER_AGENT,
@@ -372,11 +377,11 @@ Options:
   --max-retries <n>      Max retries before failed (default: 1)
   --retry-base-ms <ms>   Retry base delay (default: 3000)
   --retry-max-ms <ms>    Retry max delay cap (default: 60000)
-  --agent-routing <mode> OMO agent routing mode: auto(eq1-first)|fixed (default: auto)
+  --agent-routing <mode> Agent routing mode: auto(eq1-first)|fixed (default: auto)
   --simple-agent <name>  Agent for simple tasks (default: spark)
-  --complex-agent <name> Agent for complex/risk tasks (default: sisyphus)
-  --bypass-agent <name>  Force fixed OMO agent override (sets routing=fixed)
-  --bypass-model <provider/model> OMO bypass model (optional)
+  --complex-agent <name> Agent for complex/risk tasks (default: oholiab)
+  --bypass-agent <name>  Force fixed agent override (sets routing=fixed)
+  --bypass-model <provider/model> Bypass model (optional)
   --base-url <url>       OpenCode base URL (default: http://127.0.0.1:4996)
   --help                 Show this help`);
 }

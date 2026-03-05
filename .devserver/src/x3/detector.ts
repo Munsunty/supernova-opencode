@@ -1,5 +1,6 @@
 import { createLogger } from "../utils/logging";
-import type { InteractionType, Store } from "../x2/store";
+import type { InteractionOrigin, InteractionType, Store } from "../x2/store";
+// InteractionType is used for joshua_decision reclassification in consumeList
 
 const logger = createLogger("X3.Detector");
 
@@ -16,6 +17,7 @@ interface PollSourceResult {
 export interface DetectorPollStats {
     seen: number;
     enqueued: number;
+    observed: number;
     duplicate: number;
     invalid: number;
 }
@@ -24,9 +26,15 @@ function isAllZeroStats(stats: DetectorPollStats): boolean {
     return (
         stats.seen === 0 &&
         stats.enqueued === 0 &&
+        stats.observed === 0 &&
         stats.duplicate === 0 &&
         stats.invalid === 0
     );
+}
+
+function shouldLogPollInfo(stats: DetectorPollStats): boolean {
+    // INFO는 실제 action 신호(enqueued) 또는 데이터 이상(invalid)에만 사용한다.
+    return stats.enqueued > 0 || stats.invalid > 0;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -103,6 +111,28 @@ function payloadToString(value: unknown): string {
     }
 }
 
+const JOSHUA_DECISION_MARKER = "JOSHUA_DECISION:";
+
+function isJoshuaDecision(record: Record<string, unknown>): boolean {
+    const textFields = ["message", "question", "text", "content", "body"];
+    for (const field of textFields) {
+        const v = record[field];
+        if (typeof v === "string" && v.trimStart().startsWith(JOSHUA_DECISION_MARKER)) {
+            return true;
+        }
+    }
+    const nested = nestedRecord(record, ["question", "request", "data"]);
+    if (nested) {
+        for (const field of textFields) {
+            const v = nested[field];
+            if (typeof v === "string" && v.trimStart().startsWith(JOSHUA_DECISION_MARKER)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 export class InteractionDetector {
     private store: Store;
     private server: DetectorServer;
@@ -123,6 +153,7 @@ export class InteractionDetector {
         const stats: DetectorPollStats = {
             seen: 0,
             enqueued: 0,
+            observed: 0,
             duplicate: 0,
             invalid: 0,
         };
@@ -144,13 +175,14 @@ export class InteractionDetector {
                 type: "poll_once",
                 seen: stats.seen,
                 enqueued: stats.enqueued,
+                observed: stats.observed,
                 duplicate: stats.duplicate,
                 invalid: stats.invalid,
                 permission_error: permissions.error,
                 question_error: questions.error,
             }),
         });
-        if (isAllZeroStats(stats)) {
+        if (isAllZeroStats(stats) || !shouldLogPollInfo(stats)) {
             logger.debug("detector_poll_done", stats);
         } else {
             logger.info("detector_poll_done", stats);
@@ -186,18 +218,35 @@ export class InteractionDetector {
             }
 
             const sessionId = extractSessionId(value);
+            const origin = this.resolveOrigin(sessionId);
+            const status = origin === "managed" ? "pending" : "observed";
+            const effectiveType: InteractionType =
+                type === "question" && origin === "managed" && isJoshuaDecision(value)
+                    ? "joshua_decision"
+                    : type;
             const upserted = this.store.upsertInteraction({
-                type,
+                type: effectiveType,
                 requestId,
                 sessionId,
+                origin,
+                status,
                 payload: payloadToString(value),
             });
             if (upserted.created) {
-                stats.enqueued += 1;
+                if (origin === "managed") {
+                    stats.enqueued += 1;
+                } else {
+                    stats.observed += 1;
+                }
                 continue;
             }
             stats.duplicate += 1;
         }
+    }
+
+    private resolveOrigin(sessionId: string | null): InteractionOrigin {
+        if (!sessionId) return "external";
+        return this.store.hasTaskSession(sessionId) ? "managed" : "external";
     }
 
     private async pollSource(

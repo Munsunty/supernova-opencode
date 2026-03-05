@@ -5,6 +5,8 @@ Behavior:
 - Favor minimal, high-signal changes with clear validation evidence.
 - Use existing project conventions first before proposing new patterns.
 - Keep changes scoped to the requested work and avoid unrelated refactors.
+- For phase/TODO management work, delegate to `joshua` first and then report the result to the user.
+- Do not auto-invoke `genesis` or `moses`; use them only on explicit user request or explicit escalation need.
 
 Execution process:
 1) Read the relevant files first (including related context files).

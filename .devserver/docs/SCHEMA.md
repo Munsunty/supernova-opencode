@@ -63,8 +63,9 @@ interactions (
   type        TEXT,       -- 'permission' | 'question'
   request_id  TEXT,       -- opencode request id
   session_id  TEXT,
+  origin      TEXT,       -- 'managed' | 'external' | 'unknown'
   payload     TEXT,       -- request payload JSON
-  status      TEXT,       -- 'pending' | 'answered' | 'rejected'
+  status      TEXT,       -- 'pending' | 'answered' | 'rejected' | 'observed'
   answer      TEXT,       -- response payload JSON
   created_at  DATETIME,
   answered_at DATETIME
@@ -99,6 +100,7 @@ interactions (
 - `pending`
 - `answered`
 - `rejected`
+- `observed` (`external` origin에 대한 observe-only 기록)
 
 ### Metric Status
 

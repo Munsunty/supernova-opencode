@@ -488,7 +488,7 @@ describe("X2 Queue", () => {
             maxRetries: 0,
             agentRoutingMode: "auto",
             simpleAgent: "spark",
-            complexAgent: "sisyphus",
+            complexAgent: "oholiab",
         });
 
         queue.enqueue("간단히 상태 알려줘");
@@ -506,14 +506,14 @@ describe("X2 Queue", () => {
         store.close();
     });
 
-    test("dispatchNext routes complex/risk prompt to sisyphus in auto mode", async () => {
+    test("dispatchNext routes complex/risk prompt to oholiab in auto mode", async () => {
         const store = createStore();
         const server = new FakeServer();
         const queue = new Queue(store, server as never, {
             maxRetries: 0,
             agentRoutingMode: "auto",
             simpleAgent: "spark",
-            complexAgent: "sisyphus",
+            complexAgent: "oholiab",
         });
 
         queue.enqueue(
@@ -524,11 +524,11 @@ describe("X2 Queue", () => {
         expect(server.promptCalls).toBe(1);
         expect(server.lastPromptArgs[0]).toMatchObject({
             options: {
-                agent: "sisyphus",
+                agent: "oholiab",
             },
         });
         const running = store.listTasks({ status: "running", limit: 1 })[0];
-        expect(running?.runAgent).toBe("sisyphus");
+        expect(running?.runAgent).toBe("oholiab");
 
         store.close();
     });
@@ -545,7 +545,7 @@ describe("X2 Queue", () => {
             maxRetries: 0,
             agentRoutingMode: "auto",
             simpleAgent: "spark",
-            complexAgent: "sisyphus",
+            complexAgent: "oholiab",
             eq1Client: eq1Client as never,
         });
 
@@ -557,7 +557,7 @@ describe("X2 Queue", () => {
         expect(server.promptCalls).toBe(1);
         expect(server.lastPromptArgs[0]).toMatchObject({
             options: {
-                agent: "sisyphus",
+                agent: "oholiab",
             },
         });
 
@@ -575,7 +575,7 @@ describe("X2 Queue", () => {
             maxRetries: 0,
             agentRoutingMode: "auto",
             simpleAgent: "spark",
-            complexAgent: "sisyphus",
+            complexAgent: "oholiab",
             eq1Client: eq1Client as never,
         });
 
@@ -586,7 +586,7 @@ describe("X2 Queue", () => {
         expect(server.promptCalls).toBe(1);
         expect(server.lastPromptArgs[0]).toMatchObject({
             options: {
-                agent: "sisyphus",
+                agent: "oholiab",
             },
         });
 

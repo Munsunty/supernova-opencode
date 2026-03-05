@@ -5,7 +5,7 @@
 
 ## 개요
 
-이 프로젝트는 Podman 기반으로 OpenCode/OmO 런타임을 프로젝트 단위로 격리한다.  
+이 프로젝트는 Podman 기반으로 OpenCode 런타임을 프로젝트 단위로 격리한다.  
 핵심 목표는 **"프로젝트 경로만 주면 독립된 Dₚ가 재현 가능하게 기동"**이며, 최근 변경으로 `.devserver` 오염 방지(마스킹)까지 기본 정책으로 포함한다.
 
 ## 격리 메커니즘
@@ -18,9 +18,8 @@
 ~/.config/opencode/         →    /srv/opencode/config                  → named volume (VOLUME_CONFIG)
 ~/.local/share/opencode/    →    /srv/opencode/data                    → named volume (VOLUME_DATA)
 ~/.cache/opencode/          →    /srv/opencode/cache                   → named volume (VOLUME_CACHE)
-opencode.json               →    /srv/opencode/config/opencode.json    → 시작 시 생성 (template+generator)
-oh-my-opencode config       →    /srv/opencode/config/oh-my-opencode.jsonc
-                               (seed import)                           → `.devserver/run-sync/oh-my-opencode.jsonc` read-only seed
+opencode.json               →    /srv/opencode/config/opencode.json
+                               (seed import)                           → `.devserver/run-sync/opencode.json` read-only seed
 auth.json                   →    /srv/opencode/data/opencode/auth.json
                                (seed import)                           → `.devserver/run-sync/auth.json` read-only seed
 ```
@@ -35,16 +34,9 @@ auth.json                   →    /srv/opencode/data/opencode/auth.json
 
 ## Runtime Permission 샌드박스
 
-- 생성 파일: `/srv/opencode/config/opencode.json` (컨테이너 내부)
-- 기준 경로: `/workspace/project` (entrypoint에서 generator 실행 시 주입)
-- 정책:
-  - `external_directory` deny-by-default, `/workspace/project/**`만 allow
-  - `read/edit/glob/grep/list`도 `/workspace/project/**`만 allow
-  - `/workspace/project/.devserver/**`는 별도 deny
-  - `bash`는 기본 `ask`
-- 템플릿/생성기:
-  - 템플릿: `/opt/opencode/opencode.template.json` (`.devserver/opencode.json` 기반)
-  - 생성기: `/opt/opencode/src/scripts/generate-opencode-config.ts`
+- 파일: `/srv/opencode/config/opencode.json` (컨테이너 내부)
+- 소스: `run-sync/opencode.json` seed sync
+- 정책: seed 파일에 정의된 permission 규칙을 그대로 사용
 
 ## 선택 OS 샌드박스 (Linux only)
 
@@ -59,19 +51,19 @@ auth.json                   →    /srv/opencode/data/opencode/auth.json
 |----------|--------|------|
 | `X_OC_PODMAN_EXCLUDE_DEVSERVER` | `1` | `/workspace/project/.devserver` 마스킹 활성화 |
 | `X_OC_PODMAN_DEVSERVER_MASK_VOLUME` | `${VOLUME_PREFIX}_devserver_mask` | `.devserver` 마스크용 named volume |
-| `X_OC_PODMAN_RUN_SYNC_DIR` | `.devserver/run-sync` | seed 파일 디렉터리(auth/OmO) |
+| `X_OC_PODMAN_RUN_SYNC_DIR` | `.devserver/run-sync` | seed 파일 디렉터리(opencode/auth) |
+| `X_OC_PODMAN_OPENCODE_CONFIG_IMPORT_MODE` | `always` | OpenCode config seed import 모드(`always/if-missing/off`) |
 | `X_OC_PODMAN_AUTH_IMPORT_MODE` | `always` | auth seed import 모드(`always/if-missing/off`) |
-| `X_OC_PODMAN_OMO_CONFIG_IMPORT_MODE` | `always` | OmO config seed import 모드(`always/if-missing/off`) |
 | `X_OC_PODMAN_FORCE_KILL_PORTS` | `0` | 포트 충돌 시 자동 kill 여부 |
 
 ### 런타임(`dockerfile`/`entrypoint.sh`)
 
 | 환경변수 | 런타임 값 | 설명 |
 |----------|-----------|------|
-| `XDG_CONFIG_HOME` | `/srv/opencode/config` | OpenCode/OmO 설정 |
+| `XDG_CONFIG_HOME` | `/srv/opencode/config` | OpenCode 설정 |
 | `XDG_DATA_HOME` | `/srv/opencode/data` | auth/DB/로그/스토리지 |
 | `XDG_CACHE_HOME` | `/srv/opencode/cache` | 캐시/임시 데이터 |
-| `OPENCODE_CONFIG_DIR` | `/srv/opencode/config` | OmO 포함 보조 설정 루트 |
+| `OPENCODE_CONFIG_DIR` | `/srv/opencode/config` | 보조 설정 루트 |
 | `OPENCODE_CONFIG` | `/srv/opencode/config/opencode.json` | runtime permission config |
 | `OPENCODE_SERVER_PASSWORD` | unset(default) | 설정 시 서버 접근 보호 |
 
@@ -79,15 +71,15 @@ auth.json                   →    /srv/opencode/data/opencode/auth.json
 
 ### 격리되는 항목
 
-- OpenCode/OmO 런타임 설정/데이터/캐시 (`/srv/opencode/{config,data,cache}` named volumes)
+- OpenCode 런타임 설정/데이터/캐시 (`/srv/opencode/{config,data,cache}` named volumes)
 - runtime auth 파일 (`/srv/opencode/data/opencode/auth.json`)
-- runtime config (`/srv/opencode/config/opencode.json`, `/srv/opencode/config/oh-my-opencode.jsonc`)
+- runtime config (`/srv/opencode/config/opencode.json`)
 - 워크스페이스 내 `.devserver` 쓰기 경로(마스크 volume로 분리)
 
 ### 부분 공유 항목
 
 - `/workspace/project` 소스 트리 전체(코드 변경 반영 목적)
-- seed 파일 2종(`run-sync/auth.json`, `run-sync/oh-my-opencode.jsonc`)은 read-only mount 후 런타임 경로로 동기화
+- seed 파일 2종(`run-sync/opencode.json`, `run-sync/auth.json`)은 read-only mount 후 런타임 경로로 동기화
 
 ### 격리되지 않는 항목
 

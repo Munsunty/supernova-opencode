@@ -1,36 +1,34 @@
 {
-  "name": "homsa",
-  "module": "index.ts",
-  "type": "module",
-  "private": true,
-  "devDependencies": {
-    "@types/bun": "latest"
-  },
-  "peerDependencies": {
-    "typescript": "^5"
-  },
-  "scripts": {
-    "dev": ".devserver/dev-up.sh",
-    "dev:podman": ".devserver/dev-up.sh",
-    "dev:build": ".devserver/dev-up.sh --build-only",
-    "dev:run": ".devserver/dev-up.sh --run-only",
-    "dev:doctor": ".devserver/dev-doctor.sh",
-    "dev:smoke": ".devserver/dev-smoke.sh",
-    "dashboard": "bunx oh-my-opencode-dashboard@latest",
-    "dashboard:add": "bunx oh-my-opencode-dashboard@latest add --name opencode-supernova",
-    "toy:init": "bun run .devserver/dev_code/script/toy-bot-init.ts",
-    "toy:cmd": "bun run .devserver/dev_code/script/toy-bot-command.ts",
-    "toy:watch": "bun run .devserver/dev_code/script/toy-bot-watch.ts",
-    "xoc:prompt": "bun run .devserver/dev_code/script/xoc-prompt.ts",
-    "xoc:monitor": "bun run .devserver/dev_code/script/xoc-x4-monitor.ts",
-    "x1:receive": "bun run .devserver/dev_code/script/x1-receive.ts",
-    "x1:poller": "bun run .devserver/src/x1/poller.ts",
-    "x1:webhook": "bun run .devserver/dev_code/script/x1-webhook.ts",
-    "xoc:session": "bun run .devserver/dev_code/script/xoc-session-measure.ts",
-    "x2:worker": "bun run .devserver/src/x2/worker.ts",
-    "x2:once": "bun run .devserver/src/x2/worker.ts --once",
-    "x3:worker": "bun run .devserver/src/x3/worker.ts",
-    "x3:once": "bun run .devserver/src/x3/worker.ts --once",
-    "eq1:smoke": "cd .devserver && bun run src/eq1/smoke.ts"
-  }
+    "name": "homsa",
+    "module": "index.ts",
+    "type": "module",
+    "private": true,
+    "devDependencies": {
+        "@types/bun": "latest"
+    },
+    "peerDependencies": {
+        "typescript": "^5"
+    },
+    "scripts": {
+        "dev": ".devserver/dev-up.sh",
+        "dev:podman": ".devserver/dev-up.sh",
+        "dev:build": ".devserver/dev-up.sh --build-only",
+        "dev:run": ".devserver/dev-up.sh --run-only",
+        "dev:doctor": ".devserver/dev-doctor.sh",
+        "dev:smoke": ".devserver/dev-smoke.sh",
+        "toy:init": "bun run .devserver/dev_code/script/toy-bot-init.ts",
+        "toy:cmd": "bun run .devserver/dev_code/script/toy-bot-command.ts",
+        "toy:watch": "bun run .devserver/dev_code/script/toy-bot-watch.ts",
+        "xoc:prompt": "bun run .devserver/dev_code/script/xoc-prompt.ts",
+        "xoc:monitor": "bun run .devserver/dev_code/script/xoc-x4-monitor.ts",
+        "x1:receive": "bun run .devserver/dev_code/script/x1-receive.ts",
+        "x1:poller": "bun run .devserver/src/x1/poller.ts",
+        "x1:webhook": "bun run .devserver/dev_code/script/x1-webhook.ts",
+        "xoc:session": "bun run .devserver/dev_code/script/xoc-session-measure.ts",
+        "x2:worker": "bun run .devserver/src/x2/worker.ts",
+        "x2:once": "bun run .devserver/src/x2/worker.ts --once",
+        "x3:worker": "bun run .devserver/src/x3/worker.ts",
+        "x3:once": "bun run .devserver/src/x3/worker.ts --once",
+        "eq1:smoke": "cd .devserver && bun run src/eq1/smoke.ts"
+    }
 }

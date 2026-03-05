@@ -1,6 +1,6 @@
 import type { Eq1Client } from "../eq1/llm-client";
 import { createLogger } from "../utils/logging";
-import type { Interaction } from "../x2/store";
+import type { Interaction, InteractionType } from "../x2/store";
 
 const logger = createLogger("X3.Evaluator");
 
@@ -27,7 +27,10 @@ function toText(value: unknown): string | null {
     return typeof value === "string" && value.trim().length > 0 ? value : null;
 }
 
-function pickRoute(output: Record<string, unknown>): "auto" | "user" {
+function pickRoute(
+    output: Record<string, unknown>,
+    interactionType?: InteractionType,
+): "auto" | "user" {
     const action = toText(output.action)?.toLowerCase();
     if (action === "auto" || action === "allow" || action === "approve") {
         return "auto";
@@ -40,8 +43,11 @@ function pickRoute(output: Record<string, unknown>): "auto" | "user" {
     ) {
         return "user";
     }
+    // joshua_decision uses a conservative threshold (≤3 auto, >3 user)
+    // to minimise false autonomous resolutions of PM-level decisions.
+    const threshold = interactionType === "joshua_decision" ? 3 : 6;
     const score = toNumber(output.score);
-    return score !== null && score <= 6 ? "auto" : "user";
+    return score !== null && score <= threshold ? "auto" : "user";
 }
 
 function buildPrompt(interaction: Interaction): string {
@@ -79,7 +85,7 @@ export class InteractionEvaluator {
         const score = toNumber(output.score) ?? 10;
         const reason = toText(output.reason) ?? "no reason";
         const reply = toText(output.reply) ?? toText(output.answer) ?? null;
-        const route = pickRoute(output);
+        const route = pickRoute(output, interaction.type);
 
         logger.info("interaction_evaluated", {
             interaction: interaction.id.slice(0, 8),

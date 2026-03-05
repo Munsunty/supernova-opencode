@@ -41,7 +41,7 @@ Done (완료)
 - [x] [P1][Tests] .devserver/dev_code/test 전체 통과 (77 pass)
 - [x] [P2][Ops] dev-up/entrypoint 주요 env 변수 표 정리
 - [x] [P1][Auth] 컨테이너 시작 시 auth seed 자동 동기화
-- [x] [P1][OmO] .devserver/oh-my-opencode.jsonc 런타임 config 동기화
+- [x] [P1][Config] opencode runtime config seed 동기화
 - [x] [P1][Workspace] podman run -w /workspace/project 기본 working dir 고정
 - [x] [P1][Dashboard] dashboard project auto-add 연결
 - [x] [P1][Mount] .devserver 경로 named volume 마스킹 + seed read-only 개별 마운트
@@ -65,7 +65,7 @@ In Progress
 
 Run Log
 - 2026-02-28: temp_TODO 생성, P0/P1 작업 대부분 완료, 77 tests PASS
-- 2026-03-01: auth/OmO seed sync, dashboard 개선, workspace 고정
+- 2026-03-01: auth/opencode seed sync, dashboard 개선, workspace 고정
 - 2026-03-02: .devserver 마운트 정책 전환, 보안 보강, smoke PASS 후 close-ready
 
 결론

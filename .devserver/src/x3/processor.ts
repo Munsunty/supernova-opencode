@@ -22,9 +22,20 @@ export class InteractionProcessor {
     }
 
     nextPending(): Interaction | null {
+        const managed =
+            this.store.listInteractions({
+                status: "pending",
+                origin: "managed",
+                limit: 1,
+            })[0] ?? null;
+        if (managed) return managed;
+        // Legacy rows (created before origin classification) are processed once.
         return (
-            this.store.listInteractions({ status: "pending", limit: 1 })[0] ??
-            null
+            this.store.listInteractions({
+                status: "pending",
+                origin: "unknown",
+                limit: 1,
+            })[0] ?? null
         );
     }
 

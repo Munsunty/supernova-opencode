@@ -424,7 +424,7 @@ async function buildReport(args: Args): Promise<SessionMeasureReport> {
     if (args.prompt && messagesRaw.length === 0) {
         promptError =
             promptError ??
-            "No messages returned after prompt execution (request may have been dropped or OMO bypass route blocked)";
+            "No messages returned after prompt execution (request may have been dropped or bypass route blocked)";
     }
     const [sessionRaw, todosRaw] = await Promise.all([
         server.getSession(sessionId),

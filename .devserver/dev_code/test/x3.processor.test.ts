@@ -241,6 +241,52 @@ describe("X3 processor (evaluator + responder)", () => {
         store.close();
     });
 
+    test("processNext skips external pending interactions and handles managed first", async () => {
+        const store = createStore();
+        const eq1 = new FakeEq1Client();
+        const server = new FakeInteractionServer();
+        eq1.outputs.push({
+            score: 2,
+            reason: "safe action",
+            route: "auto",
+            reply: "approved",
+        });
+
+        store.upsertInteraction({
+            type: "permission",
+            requestId: "perm-ext-pending",
+            sessionId: "ses-ext",
+            origin: "external",
+            status: "pending",
+            payload: JSON.stringify({ requestID: "perm-ext-pending" }),
+        });
+        store.upsertInteraction({
+            type: "permission",
+            requestId: "perm-managed",
+            sessionId: "ses-managed",
+            origin: "managed",
+            status: "pending",
+            payload: JSON.stringify({ requestID: "perm-managed" }),
+        });
+
+        const evaluator = new InteractionEvaluator(eq1 as never);
+        const responder = new InteractionResponder(store, server as never);
+        const processor = new InteractionProcessor(store, evaluator, responder);
+
+        const processed = await processor.processNext();
+        expect(processed).toBeDefined();
+        expect(processed?.interaction.requestId).toBe("perm-managed");
+        expect(server.replyPermissionCalls).toBe(1);
+
+        const external = store.getInteractionByRequest(
+            "permission",
+            "perm-ext-pending",
+        );
+        expect(external?.status).toBe("pending");
+
+        store.close();
+    });
+
     test("rejected auto reply records failure reason in transition metric", async () => {
         const store = createStore();
         const eq1 = new FakeEq1Client();

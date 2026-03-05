@@ -89,4 +89,55 @@ describe("X2 Store", () => {
 
         store.close();
     });
+
+    test("upsertInteraction stores external observe-only interaction", () => {
+        const store = createStore();
+        const result = store.upsertInteraction({
+            type: "permission",
+            requestId: "perm-ext",
+            sessionId: "ses-ext",
+            origin: "external",
+            status: "observed",
+            payload: JSON.stringify({ requestID: "perm-ext" }),
+        });
+
+        expect(result.created).toBe(true);
+        expect(result.interaction.origin).toBe("external");
+        expect(result.interaction.status).toBe("observed");
+
+        const stats = store.getInteractionStats();
+        expect(stats.pending).toBe(0);
+        expect(stats.observed).toBe(1);
+        expect(stats.answered).toBe(0);
+        expect(stats.rejected).toBe(0);
+
+        store.close();
+    });
+
+    test("upsertInteraction upgrades legacy unknown pending to external observed", () => {
+        const store = createStore();
+        const first = store.upsertInteraction({
+            type: "question",
+            requestId: "q-legacy",
+            sessionId: "ses-legacy",
+            payload: JSON.stringify({ requestID: "q-legacy" }),
+        });
+        expect(first.created).toBe(true);
+        expect(first.interaction.origin).toBe("unknown");
+        expect(first.interaction.status).toBe("pending");
+
+        const second = store.upsertInteraction({
+            type: "question",
+            requestId: "q-legacy",
+            sessionId: "ses-legacy",
+            origin: "external",
+            status: "observed",
+            payload: JSON.stringify({ requestID: "q-legacy" }),
+        });
+        expect(second.created).toBe(false);
+        expect(second.interaction.origin).toBe("external");
+        expect(second.interaction.status).toBe("observed");
+
+        store.close();
+    });
 });

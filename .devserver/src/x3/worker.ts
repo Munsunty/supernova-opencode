@@ -20,6 +20,7 @@ interface WorkerOptions {
 interface DetectorTickLogPayload {
     seen: number;
     enqueued: number;
+    observed: number;
     duplicate: number;
     invalid: number;
     processed: number;
@@ -169,15 +170,12 @@ async function processPendingInteractions(
 }
 
 function logDetectorTick(payload: DetectorTickLogPayload) {
-    const isAllZero =
-        payload.seen === 0 &&
-        payload.enqueued === 0 &&
-        payload.duplicate === 0 &&
-        payload.invalid === 0 &&
-        payload.processed === 0 &&
-        payload.pending === 0;
-
-    if (isAllZero) {
+    const shouldInfo =
+        payload.enqueued > 0 ||
+        payload.invalid > 0 ||
+        payload.processed > 0 ||
+        payload.pending > 0;
+    if (!shouldInfo) {
         logger.debug("detector_tick_done", payload);
         return;
     }
@@ -231,23 +229,21 @@ async function main() {
         const oncePayload = {
             seen: stats.seen,
             enqueued: stats.enqueued,
+            observed: stats.observed,
             duplicate: stats.duplicate,
             invalid: stats.invalid,
             processed,
             pending: queueStats.pending,
+            observed_count: queueStats.observed,
             answered: queueStats.answered,
             rejected: queueStats.rejected,
         };
-        const onceAllZero =
-            oncePayload.seen === 0 &&
-            oncePayload.enqueued === 0 &&
-            oncePayload.duplicate === 0 &&
-            oncePayload.invalid === 0 &&
-            oncePayload.processed === 0 &&
-            oncePayload.pending === 0 &&
-            oncePayload.answered === 0 &&
-            oncePayload.rejected === 0;
-        if (onceAllZero) {
+        const onceShouldInfo =
+            oncePayload.enqueued > 0 ||
+            oncePayload.invalid > 0 ||
+            oncePayload.processed > 0 ||
+            oncePayload.pending > 0;
+        if (!onceShouldInfo) {
             logger.debug("detector_once_done", oncePayload);
         } else {
             logger.info("detector_once_done", oncePayload);
@@ -269,6 +265,7 @@ async function main() {
             logDetectorTick({
                 seen: stats.seen,
                 enqueued: stats.enqueued,
+                observed: stats.observed,
                 duplicate: stats.duplicate,
                 invalid: stats.invalid,
                 processed,

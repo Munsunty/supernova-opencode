@@ -13,9 +13,9 @@
 |------|------|
 | Podman doctor | PASS (`failures=0`, `warnings=4`) |
 | OpenCode 서버 | 가동 중 (`127.0.0.1:4996`, healthy, v1.2.15) |
-| Dashboard 포트 | `51234` 사용 중 |
-| Dashboard internal 포트 | `51235` 사용 중 |
-| 런타임 패키지(설정 기준) | `opencode-ai:^1.2.15`, `@opencode-ai/plugin:1.2.15`, `@opencode-ai/sdk:^1.2.15`, `oh-my-opencode:^3.10.0` |
+| Dashboard 포트 | 기본 비활성 (`X_OC_PODMAN_DASHBOARD_ENABLED=0`) |
+| Dashboard internal 포트 | 기본 비활성 (`X_OC_PODMAN_DASHBOARD_ENABLED=0`) |
+| 런타임 패키지(설정 기준) | `opencode-ai:^1.2.15`, `@opencode-ai/plugin:1.2.15`, `@opencode-ai/sdk:^1.2.15` |
 | 보안 주의 | `OPENCODE_SERVER_PASSWORD` 미설정 (doctor 경고) |
 | `.devserver/**` 접근 제한 | `opencode.json` permission에서 deny 설정 유지 |
 

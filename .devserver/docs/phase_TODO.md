@@ -1,9 +1,9 @@
 # phase_TODO.md
 
-*Last Updated: 2026-03-04*
+*Last Updated: 2026-03-05*
 
 Status: OPEN
-PhaseStamp: PS-20260304-10
+PhaseStamp: PS-20260305-01
 
 ## 목적
 
@@ -66,7 +66,7 @@ PhaseStamp: PS-20260304-10
 - `Next`: 변동 가능한 후보 백로그
 - `Backlog`: 실행 후보 목록(확정 아님)
 - `Archive`: 종료 문서 보관 상태
-- `X_oc`: `opencode + oh-my-opencode` 실행 계층
+- `X_oc`: `opencode` 실행 계층
 - `eq1`: 판단/분류/요약을 담당하는 LLM middleware 계층
 - `X2`: 큐/실행 사이클 계층
 - `X3`: interaction 감지/판단/응답 계층
@@ -82,6 +82,9 @@ PhaseStamp: PS-20260304-10
 
 ## Previous (Confirmed)
 
+- 2026-03-05: `PS-20260304-10` close (`PH-P1-BINDING-002`, `PH-P1-AGENT-001`, `PH-P1-JOSHUA-001`, `PH-P1-JOSHUA-002` 완료, aaron/caleb 바인딩 + X3 joshua_decision escalation pipeline 구축, `temp_TODO.md` archived: `archive/temp_TODO.2026-03-05.PS-20260304-10.20260305-172824.closed.md`)
+- 2026-03-05: `PH-P1-GENESIS-002` 완료 (genesis bootstrap 경로 기준 계약 확정)
+- 2026-03-05: `PH-P1-PHASE-001`, `PH-P1-PHASE-002` Joshua 운영으로 흡수 (Joshua 에이전트 시스템이 template 기반 phase/temp 관리를 직접 수행하므로 별도 phase 항목 불필요)
 - 2026-03-04: `PS-20260304-09` close (`Present` 없음, 다음 phase 후보 선별 대기 상태로 종료)
 - 2026-03-04: `PS-20260304-08` close (`PH-P1-GENESIS-001` 완료, genesis bootstrap 경로/생성 smoke 완료)
 - 2026-03-04: `PS-20260304-07` close (`PH-P1-EQ1-001`, `PH-P1-EQ1-002` 완료, `PH-P1-GENESIS-001` 다음 phase 이관)
@@ -101,9 +104,9 @@ PhaseStamp: PS-20260304-10
 - 2026-03-04: `PS-20260304-04` close (`PH-P2-X1-001` 완료, `x1` Telegram 인입 파이프라인 적용 확인)
 
 ## Present (Confirmed)
-PS-20260304-10
+PS-20260305-01
 
-- 없음 (이번 phase 선별 대기)
+- 없음
 
 ## Next (Variable Phase-Backlog)
 
@@ -111,7 +114,7 @@ PS-20260304-10
 주의: 항목 추가/삭제/우선순위 변경은 정상이다.
 주의: 단, `temp_TODO.md` 단계에서는 본 구간을 직접 변경하지 않는다.
 
-- 없음 (다음 phase 후보 선별 대기)
+- 없음
 
 ## Detail Handoff
 
@@ -134,6 +137,8 @@ PS-20260304-10
 
 ## Archive Log
 
+- 2026-03-05: `PS-20260304-10` Next 백로그 갱신 (`PH-P1-GENESIS-002`, `PH-P1-PHASE-001`, `PH-P1-PHASE-002`)
+- 2026-03-05: `PS-20260304-10` Next 문구 정렬 (genesis 갱신 경로 + template 기반 phase 운영 + temp 기반 개발 실행 기준)
 - 2026-03-04: `PS-20260303-01` close 정식 반영 및 `PS-20260304-01` phase 시작, `Present` reset/`Next` 갱신
 - 2026-03-04: `PS-20260304-01` Next→Present 이관(`PH-P2-X3-001`, `PH-P2-X4-001`) 반영. `X1`은 Next 백로그로 보류 유지
 - 2026-03-03: `PH-P2-X1-001`는 다음 cycle 후보로 후순위 보류 결정
@@ -163,3 +168,9 @@ PS-20260304-10
 - 2026-03-04: `PS-20260304-09` phase close 완료 (`Present` 없음, `temp_TODO.md` archived: `archive/temp_TODO.2026-03-04.PS-20260304-09.20260304-191056.closed.md`)
 - 2026-03-04: `PS-20260304-10` phase 시작 (`PS-20260304-09` 종료 상태를 Previous로 고정, `temp_TODO.md` 신규 오픈 생성)
 - 2026-03-04: `PS-20260304-10` Present 갱신 없음 (다음 후보 선별 대기)
+- 2026-03-05: `PS-20260304-10` Next 4개 추가 (`PH-P1-BINDING-002`, `PH-P1-AGENT-001`, `PH-P1-JOSHUA-001`, `PH-P1-JOSHUA-002`) — aaron 바인딩, caleb 추가, joshua QA/explore/escalation 개선 설계 확정
+- 2026-03-05: `PS-20260304-10` Present 확정 (`PH-P1-BINDING-002` → `PH-P1-AGENT-001` → `PH-P1-JOSHUA-001` → `PH-P1-JOSHUA-002` 순차 실행), `GENESIS-002`/`PHASE-001`/`PHASE-002` Next 제거
+- 2026-03-05: `PS-20260304-10` Present 전체 완료 (BINDING-002/AGENT-001/JOSHUA-001/JOSHUA-002 모두 [완료])
+- 2026-03-05: `PS-20260304-10` phase close 완료 (`temp_TODO.md` archived: `archive/temp_TODO.2026-03-05.PS-20260304-10.20260305-172824.closed.md`)
+- 2026-03-05: `PS-20260305-01` phase 시작 (`PS-20260304-10` 종료 상태를 Previous로 고정, `temp_TODO.md` 신규 오픈 생성)
+- 2026-03-05: `PS-20260305-01` Present 갱신 없음 (다음 후보 선별 대기)

@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-OPENCODE_CONFIG_TEMPLATE="${OPENCODE_CONFIG_TEMPLATE:-/opt/opencode/opencode.template.json}"
 OPENCODE_CONFIG_CONTENT="${OPENCODE_CONFIG_CONTENT:-}"
-OPENCODE_CONFIG_GENERATOR="${OPENCODE_CONFIG_GENERATOR_SCRIPT:-/opt/opencode/src/scripts/generate-opencode-config.ts}"
-OPENCODE_CONFIG_GENERATE_ON_START="${OPENCODE_CONFIG_GENERATE_ON_START:-1}"
+OPENCODE_CONFIG_IMPORT_PATH="${OPENCODE_CONFIG_IMPORT_PATH:-/opt/opencode/opencode.seed.json}"
+OPENCODE_CONFIG_IMPORT_MODE="${OPENCODE_CONFIG_IMPORT_MODE:-always}"
 OPENCODE_BIN="${OPENCODE_BIN:-/opt/opencode/node_modules/.bin/opencode}"
 DASHBOARD_BIN="${OPENCODE_DASHBOARD_BIN:-bunx}"
-DASHBOARD_PACKAGE="${OPENCODE_DASHBOARD_PACKAGE:-oh-my-opencode-dashboard@latest}"
+DASHBOARD_PACKAGE="${OPENCODE_DASHBOARD_PACKAGE:-}"
 DASHBOARD_PROXY_SCRIPT="${OPENCODE_DASHBOARD_PROXY_SCRIPT:-/opt/opencode/src/scripts/dashboard-proxy.ts}"
 READINESS_HOST="${OPENCODE_READY_HOST:-127.0.0.1}"
 OPENCODE_HEALTH_PATH="${OPENCODE_HEALTH_PATH:-/global/health}"
@@ -21,9 +20,6 @@ DASHBOARD_PROJECT_NAME="${OPENCODE_DASHBOARD_PROJECT_NAME:-$(basename "$DASHBOAR
 OPENCODE_AUTH_IMPORT_PATH="${OPENCODE_AUTH_IMPORT_PATH:-}"
 OPENCODE_AUTH_FILE="${OPENCODE_AUTH_FILE:-$XDG_DATA_HOME/opencode/auth.json}"
 OPENCODE_AUTH_IMPORT_MODE="${OPENCODE_AUTH_IMPORT_MODE:-always}"
-OPENCODE_OMO_CONFIG_IMPORT_PATH="${OPENCODE_OMO_CONFIG_IMPORT_PATH:-}"
-OPENCODE_OMO_CONFIG_FILE="${OPENCODE_OMO_CONFIG_FILE:-$OPENCODE_CONFIG_DIR/oh-my-opencode.jsonc}"
-OPENCODE_OMO_CONFIG_IMPORT_MODE="${OPENCODE_OMO_CONFIG_IMPORT_MODE:-always}"
 OPENCODE_TEMPLATES_IMPORT_PATH="${OPENCODE_TEMPLATES_IMPORT_PATH:-}"
 OPENCODE_TEMPLATES_IMPORT_MODE="${OPENCODE_TEMPLATES_IMPORT_MODE:-always}"
 OPENCODE_TEMPLATES_TARGET_DIR="${OPENCODE_TEMPLATES_TARGET_DIR:-$WORKSPACE_DIR/docs/templates}"
@@ -53,6 +49,38 @@ export OPENCODE_X1_BOT_TOKEN
 export X2_TELEGRAM_REPORT
 
 mkdir -p "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_CACHE_HOME"
+
+sync_opencode_config_file() {
+  if [ "$OPENCODE_CONFIG_IMPORT_MODE" = "off" ] || [ -z "$OPENCODE_CONFIG_IMPORT_PATH" ]; then
+    return 0
+  fi
+
+  if [ ! -f "$OPENCODE_CONFIG_IMPORT_PATH" ]; then
+    echo "WARN: opencode seed config not found: $OPENCODE_CONFIG_IMPORT_PATH"
+    return 0
+  fi
+
+  mkdir -p "$(dirname "$OPENCODE_CONFIG")"
+
+  case "$OPENCODE_CONFIG_IMPORT_MODE" in
+    always)
+      cp "$OPENCODE_CONFIG_IMPORT_PATH" "$OPENCODE_CONFIG"
+      ;;
+    if-missing)
+      if [ ! -f "$OPENCODE_CONFIG" ]; then
+        cp "$OPENCODE_CONFIG_IMPORT_PATH" "$OPENCODE_CONFIG"
+      else
+        return 0
+      fi
+      ;;
+    *)
+      echo "ERROR: invalid OPENCODE_CONFIG_IMPORT_MODE=$OPENCODE_CONFIG_IMPORT_MODE (allowed: always|if-missing|off)"
+      exit 1
+      ;;
+  esac
+
+  echo "OpenCode config sync: $OPENCODE_CONFIG_IMPORT_PATH -> $OPENCODE_CONFIG (mode=$OPENCODE_CONFIG_IMPORT_MODE)"
+}
 
 sync_auth_file() {
   if [ "$OPENCODE_AUTH_IMPORT_MODE" = "off" ] || [ -z "$OPENCODE_AUTH_IMPORT_PATH" ]; then
@@ -85,38 +113,6 @@ sync_auth_file() {
 
   chmod 600 "$OPENCODE_AUTH_FILE" 2>/dev/null || true
   echo "Auth sync: $OPENCODE_AUTH_IMPORT_PATH -> $OPENCODE_AUTH_FILE (mode=$OPENCODE_AUTH_IMPORT_MODE)"
-}
-
-sync_omo_config_file() {
-  if [ "$OPENCODE_OMO_CONFIG_IMPORT_MODE" = "off" ] || [ -z "$OPENCODE_OMO_CONFIG_IMPORT_PATH" ]; then
-    return 0
-  fi
-
-  if [ ! -f "$OPENCODE_OMO_CONFIG_IMPORT_PATH" ]; then
-    echo "WARN: oh-my-opencode seed config not found: $OPENCODE_OMO_CONFIG_IMPORT_PATH"
-    return 0
-  fi
-
-  mkdir -p "$(dirname "$OPENCODE_OMO_CONFIG_FILE")"
-
-  case "$OPENCODE_OMO_CONFIG_IMPORT_MODE" in
-    always)
-      cp "$OPENCODE_OMO_CONFIG_IMPORT_PATH" "$OPENCODE_OMO_CONFIG_FILE"
-      ;;
-    if-missing)
-      if [ ! -f "$OPENCODE_OMO_CONFIG_FILE" ]; then
-        cp "$OPENCODE_OMO_CONFIG_IMPORT_PATH" "$OPENCODE_OMO_CONFIG_FILE"
-      else
-        return 0
-      fi
-      ;;
-    *)
-      echo "ERROR: invalid OPENCODE_OMO_CONFIG_IMPORT_MODE=$OPENCODE_OMO_CONFIG_IMPORT_MODE (allowed: always|if-missing|off)"
-      exit 1
-      ;;
-  esac
-
-  echo "OmO config sync: $OPENCODE_OMO_CONFIG_IMPORT_PATH -> $OPENCODE_OMO_CONFIG_FILE (mode=$OPENCODE_OMO_CONFIG_IMPORT_MODE)"
 }
 
 sync_templates_dir() {
@@ -180,32 +176,18 @@ ensure_dashboard_project_tracked() {
 
 if [ -n "$OPENCODE_CONFIG_CONTENT" ]; then
   printf '%s\n' "$OPENCODE_CONFIG_CONTENT" >"$OPENCODE_CONFIG"
-elif [ "$OPENCODE_CONFIG_GENERATE_ON_START" = "1" ]; then
-  if [ ! -f "$OPENCODE_CONFIG_TEMPLATE" ]; then
-    echo "ERROR: OPENCODE_CONFIG_TEMPLATE not found: $OPENCODE_CONFIG_TEMPLATE"
-    exit 1
-  fi
-  if [ ! -f "$OPENCODE_CONFIG_GENERATOR" ]; then
-    echo "ERROR: OPENCODE_CONFIG_GENERATOR_SCRIPT not found: $OPENCODE_CONFIG_GENERATOR"
-    exit 1
-  fi
-
-  bun run "$OPENCODE_CONFIG_GENERATOR" \
-    --project-dir "$WORKSPACE_DIR" \
-    --template "$OPENCODE_CONFIG_TEMPLATE" \
-    --out "$OPENCODE_CONFIG"
-elif [ ! -f "$OPENCODE_CONFIG" ]; then
-  if [ -f "$OPENCODE_CONFIG_TEMPLATE" ]; then
-    cp "$OPENCODE_CONFIG_TEMPLATE" "$OPENCODE_CONFIG"
-  else
-    echo "ERROR: OPENCODE_CONFIG is missing and no template/content is available."
-    echo "       OPENCODE_CONFIG=$OPENCODE_CONFIG"
-    echo "       OPENCODE_CONFIG_TEMPLATE=$OPENCODE_CONFIG_TEMPLATE"
-    exit 1
-  fi
+else
+  sync_opencode_config_file
 fi
 
-sync_omo_config_file
+if [ ! -f "$OPENCODE_CONFIG" ]; then
+  echo "ERROR: OPENCODE_CONFIG is missing and no content/seed is available."
+  echo "       OPENCODE_CONFIG=$OPENCODE_CONFIG"
+  echo "       OPENCODE_CONFIG_IMPORT_PATH=$OPENCODE_CONFIG_IMPORT_PATH"
+  echo "       OPENCODE_CONFIG_IMPORT_MODE=$OPENCODE_CONFIG_IMPORT_MODE"
+  exit 1
+fi
+
 sync_auth_file
 sync_templates_dir
 
@@ -237,7 +219,7 @@ X2_PID=""
 X1_PID=""
 X3_PID=""
 
-DASHBOARD_ENABLED="${OPENCODE_DASHBOARD_ENABLED:-1}"
+DASHBOARD_ENABLED="${OPENCODE_DASHBOARD_ENABLED:-0}"
 DASHBOARD_PUBLIC_PORT="${OPENCODE_DASHBOARD_PORT:-51234}"
 DASHBOARD_PROXY_ENABLED="${OPENCODE_DASHBOARD_PROXY_ENABLED:-1}"
 DASHBOARD_INTERNAL_PORT="$DASHBOARD_PUBLIC_PORT"
@@ -415,6 +397,10 @@ run_readiness_checks() {
 trap cleanup EXIT INT TERM
 
 if [ "$DASHBOARD_ENABLED" = "1" ]; then
+  if [ -z "$DASHBOARD_PACKAGE" ]; then
+    echo "ERROR: dashboard enabled but OPENCODE_DASHBOARD_PACKAGE is not set"
+    exit 1
+  fi
   ensure_dashboard_project_tracked
   echo "Starting dashboard for project: $DASHBOARD_PROJECT"
   "$DASHBOARD_BIN" "$DASHBOARD_PACKAGE" --project "$DASHBOARD_PROJECT" --port "$DASHBOARD_INTERNAL_PORT" &

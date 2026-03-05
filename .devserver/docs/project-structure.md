@@ -1,6 +1,6 @@
 # 프로젝트 디렉토리 구조 (X2/X3/X4 구현 완료 기준)
 
-*Last Updated: 2026-03-04*  
+*Last Updated: 2026-03-05*  
 *Source of truth: repository tree (`.devserver/src/*`, `.devserver/dev_code/test/*`)*
 
 ```
@@ -20,11 +20,15 @@ opencode-supernova/
     ├── agents/
     │   ├── spark.prompt.txt
     │   ├── genesis.prompt.txt
+    │   ├── moses.prompt.txt
+    │   ├── joshua.prompt.txt
+    │   ├── bezalel.prompt.txt
     │   ├── eq1-core.prompt.txt
     │   ├── x2-summarizer.prompt.txt
     │   └── x4-summarizer.prompt.txt
     ├── run-sync/
-    │   ├── oh-my-opencode.jsonc
+    │   ├── opencode.json
+    │   ├── auth.json
     │   └── templates/
     │       ├── AGENTS.template.md
     │       └── phase_TODO.template.md

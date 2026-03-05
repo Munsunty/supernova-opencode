@@ -15,8 +15,13 @@ const DEFAULT_DB_PATH =
 
 export type TaskStatus = "pending" | "running" | "completed" | "failed";
 export type TaskType = "omo_request" | Eq1TaskType | "report";
-export type InteractionType = "permission" | "question";
-export type InteractionStatus = "pending" | "answered" | "rejected";
+export type InteractionType = "permission" | "question" | "joshua_decision";
+export type InteractionStatus =
+    | "pending"
+    | "answered"
+    | "rejected"
+    | "observed";
+export type InteractionOrigin = "managed" | "external" | "unknown";
 export type InboundEventStatus = "received" | "duplicate" | "invalid";
 export type InboundEventChannel = "telegram" | "cli" | (string & {});
 
@@ -49,6 +54,7 @@ export interface Interaction {
     type: InteractionType;
     requestId: string;
     sessionId: string | null;
+    origin: InteractionOrigin;
     payload: string;
     status: InteractionStatus;
     answer: string | null;
@@ -68,6 +74,7 @@ export interface InteractionStats {
     pending: number;
     answered: number;
     rejected: number;
+    observed: number;
 }
 
 export interface InboundEvent {
@@ -208,6 +215,7 @@ export class Store {
 	        type TEXT NOT NULL,
 	        request_id TEXT NOT NULL,
 	        session_id TEXT,
+	        origin TEXT NOT NULL DEFAULT 'unknown',
 	        payload TEXT NOT NULL,
 	        status TEXT NOT NULL DEFAULT 'pending',
 	        answer TEXT,
@@ -216,10 +224,14 @@ export class Store {
 	        updated_at INTEGER NOT NULL,
 	        UNIQUE(type, request_id)
 	      )
-	    `);
+		    `);
+        this.ensureInteractionColumn(
+            "origin",
+            "TEXT NOT NULL DEFAULT 'unknown'",
+        );
         this.db.exec(`
-	      CREATE INDEX IF NOT EXISTS idx_interactions_status ON interactions(status)
-	    `);
+		      CREATE INDEX IF NOT EXISTS idx_interactions_status ON interactions(status)
+		    `);
         this.db.exec(`
 		      CREATE INDEX IF NOT EXISTS idx_interactions_created ON interactions(created_at)
 		    `);
@@ -304,6 +316,18 @@ export class Store {
         if (!hasColumn) {
             this.db.exec(
                 `ALTER TABLE metrics_events ADD COLUMN ${column} ${definition}`,
+            );
+        }
+    }
+
+    private ensureInteractionColumn(column: string, definition: string) {
+        const cols = this.db
+            .prepare("PRAGMA table_info(interactions)")
+            .all() as { name: string }[];
+        const hasColumn = cols.some((c) => c.name === column);
+        if (!hasColumn) {
+            this.db.exec(
+                `ALTER TABLE interactions ADD COLUMN ${column} ${definition}`,
             );
         }
     }
@@ -595,15 +619,19 @@ export class Store {
         type: InteractionType;
         requestId: string;
         sessionId?: string | null;
+        origin?: InteractionOrigin;
+        status?: InteractionStatus;
         payload: string;
     }): { interaction: Interaction; created: boolean } {
         const now = Date.now();
         const id = randomUUIDv7();
+        const origin = input.origin ?? "unknown";
+        const status = input.status ?? "pending";
         const result = this.db
             .prepare(
                 `INSERT INTO interactions (
-                   id, type, request_id, session_id, payload, status, created_at, updated_at
-                 ) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)
+                   id, type, request_id, session_id, origin, payload, status, created_at, updated_at
+                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                  ON CONFLICT(type, request_id) DO NOTHING`,
             )
             .run(
@@ -611,12 +639,14 @@ export class Store {
                 input.type,
                 input.requestId,
                 input.sessionId ?? null,
+                origin,
                 input.payload,
+                status,
                 now,
                 now,
             );
 
-        const interaction = this.getInteractionByRequest(
+        let interaction = this.getInteractionByRequest(
             input.type,
             input.requestId,
         );
@@ -626,10 +656,40 @@ export class Store {
             );
         }
 
+        if (result.changes === 0) {
+            const shouldUpgradeOrigin =
+                interaction.origin === "unknown" && origin !== "unknown";
+            const shouldMarkObserved =
+                status === "observed" &&
+                interaction.status === "pending" &&
+                (origin === "external" || interaction.origin === "external");
+            if (shouldUpgradeOrigin || shouldMarkObserved) {
+                interaction = this.updateInteraction(interaction.id, {
+                    origin: shouldUpgradeOrigin ? origin : interaction.origin,
+                    status: shouldMarkObserved
+                        ? "observed"
+                        : interaction.status,
+                });
+            }
+        }
+
         return {
             interaction,
             created: result.changes > 0,
         };
+    }
+
+    hasTaskSession(sessionId: string): boolean {
+        const trimmed = sessionId.trim();
+        if (!trimmed) return false;
+        const row = this.db
+            .prepare(
+                `SELECT COUNT(*) as count
+                 FROM tasks
+                 WHERE session_id = ?`,
+            )
+            .get(trimmed) as { count: number };
+        return row.count > 0;
     }
 
     getInteraction(id: string): Interaction | null {
@@ -654,6 +714,7 @@ export class Store {
     listInteractions(filter?: {
         status?: InteractionStatus;
         type?: InteractionType;
+        origin?: InteractionOrigin;
         limit?: number;
     }): Interaction[] {
         let sql = "SELECT * FROM interactions";
@@ -667,6 +728,10 @@ export class Store {
         if (filter?.type) {
             wheres.push("type = ?");
             params.push(filter.type);
+        }
+        if (filter?.origin) {
+            wheres.push("origin = ?");
+            params.push(filter.origin);
         }
         if (wheres.length > 0) {
             sql += ` WHERE ${wheres.join(" AND ")}`;
@@ -689,7 +754,10 @@ export class Store {
     updateInteraction(
         id: string,
         updates: Partial<
-            Pick<Interaction, "status" | "answer" | "answeredAt" | "sessionId">
+            Pick<
+                Interaction,
+                "status" | "answer" | "answeredAt" | "sessionId" | "origin"
+            >
         >,
     ): Interaction {
         const sets: string[] = [];
@@ -710,6 +778,10 @@ export class Store {
         if (updates.sessionId !== undefined) {
             sets.push("session_id = ?");
             params.push(updates.sessionId);
+        }
+        if (updates.origin !== undefined) {
+            sets.push("origin = ?");
+            params.push(updates.origin);
         }
 
         sets.push("updated_at = ?");
@@ -733,6 +805,7 @@ export class Store {
             pending: 0,
             answered: 0,
             rejected: 0,
+            observed: 0,
         };
         for (const row of rows) {
             if (row.status in stats) {
@@ -995,11 +1068,19 @@ export class Store {
             rawType === "permission" || rawType === "question"
                 ? rawType
                 : "question";
+        const rawOrigin = (row.origin as string | null) ?? "unknown";
+        const normalizedOrigin: InteractionOrigin =
+            rawOrigin === "managed" ||
+            rawOrigin === "external" ||
+            rawOrigin === "unknown"
+                ? rawOrigin
+                : "unknown";
         const rawStatus = row.status as string;
         const normalizedStatus: InteractionStatus =
             rawStatus === "pending" ||
             rawStatus === "answered" ||
-            rawStatus === "rejected"
+            rawStatus === "rejected" ||
+            rawStatus === "observed"
                 ? rawStatus
                 : "pending";
 
@@ -1008,6 +1089,7 @@ export class Store {
             type: normalizedType,
             requestId: row.request_id as string,
             sessionId: (row.session_id as string) ?? null,
+            origin: normalizedOrigin,
             payload: row.payload as string,
             status: normalizedStatus,
             answer: (row.answer as string) ?? null,

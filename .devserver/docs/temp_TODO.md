@@ -1,16 +1,16 @@
 # temp_TODO.md
 
-*Last Updated: 2026-03-04*
+*Last Updated: 2026-03-05*
 
 Template-Version: v2
 
 Status: OPEN
-PhaseStamp: PS-20260304-10
+PhaseStamp: PS-20260305-01
 
 ## 목적
 
 - `phase_TODO.md`가 Present로 확정한 항목의 실행을 관리한다.
-- 대상: `PS-20260304-10`의 `Next`에서 선별된 `PhaseRef` 수행 항목
+- 대상: `PS-20260305-01`의 `Next`에서 선별된 `PhaseRef` 수행 항목
 - 제외: 다음 phase로 이월되는 항목
 - 상태 흐름: **Present(캐싱) → Todo(실행 분해) → In Progress(착수) → Done**
 - Backlog: Todo 정리 과정에서 파생된 후순위·변경 후보를 메모한다.
@@ -48,15 +48,11 @@ In Progress 항목은 아래 정보를 기록한다.
 
 ## Todo
 
-- 없음
-
 ## In Progress
 
 없음
 
 ## Done
-
-- 없음
 
 ## Backlog
 
@@ -68,5 +64,5 @@ In Progress 항목은 아래 정보를 기록한다.
 
 ## Run Log
 
-- 2026-03-04: 이전 phase(`PS-20260304-09`) close/archive 완료 (`archive/temp_TODO.2026-03-04.PS-20260304-09.20260304-191056.closed.md`)
-- 2026-03-04: `PS-20260304-10` 시작, `temp_TODO.md` 신규 오픈 생성
+- 2026-03-05: 이전 phase(`PS-20260304-10`) close/archive 완료 (`archive/temp_TODO.2026-03-05.PS-20260304-10.20260305-172824.closed.md`)
+- 2026-03-05: `PS-20260305-01` 시작, `temp_TODO.md` 신규 오픈 생성

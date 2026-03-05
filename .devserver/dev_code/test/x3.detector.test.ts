@@ -43,6 +43,8 @@ describe("X3 InteractionDetector", () => {
         const store = createStore();
         const server = new FakeInteractionServer();
         const detector = new InteractionDetector(store, server);
+        store.createTask("seed ses-1", "seed", "omo_request", "ses-1");
+        store.createTask("seed ses-2", "seed", "omo_request", "ses-2");
 
         server.permissions = [
             {
@@ -62,6 +64,7 @@ describe("X3 InteractionDetector", () => {
         const stats = await detector.pollOnce();
         expect(stats.seen).toBe(2);
         expect(stats.enqueued).toBe(2);
+        expect(stats.observed).toBe(0);
         expect(stats.duplicate).toBe(0);
         expect(stats.invalid).toBe(0);
 
@@ -69,11 +72,14 @@ describe("X3 InteractionDetector", () => {
         expect(pending.length).toBe(2);
         expect(pending[0]?.type).toBe("permission");
         expect(pending[0]?.requestId).toBe("perm-1");
+        expect(pending[0]?.origin).toBe("managed");
         expect(pending[1]?.type).toBe("question");
         expect(pending[1]?.requestId).toBe("q-1");
+        expect(pending[1]?.origin).toBe("managed");
 
         const queueStats = store.getInteractionStats();
         expect(queueStats.pending).toBe(2);
+        expect(queueStats.observed).toBe(0);
         expect(queueStats.answered).toBe(0);
         expect(queueStats.rejected).toBe(0);
         store.close();
@@ -83,6 +89,8 @@ describe("X3 InteractionDetector", () => {
         const store = createStore();
         const server = new FakeInteractionServer();
         const detector = new InteractionDetector(store, server);
+        store.createTask("seed ses-1", "seed", "omo_request", "ses-1");
+        store.createTask("seed ses-2", "seed", "omo_request", "ses-2");
 
         server.permissions = [
             { requestID: "perm-1", sessionID: "ses-1", action: "read" },
@@ -95,7 +103,9 @@ describe("X3 InteractionDetector", () => {
         const second = await detector.pollOnce();
 
         expect(first.enqueued).toBe(2);
+        expect(first.observed).toBe(0);
         expect(second.enqueued).toBe(0);
+        expect(second.observed).toBe(0);
         expect(second.duplicate).toBe(2);
         expect(second.invalid).toBe(0);
 
@@ -115,6 +125,7 @@ describe("X3 InteractionDetector", () => {
         const stats = await detector.pollOnce();
         expect(stats.seen).toBe(2);
         expect(stats.enqueued).toBe(0);
+        expect(stats.observed).toBe(0);
         expect(stats.duplicate).toBe(0);
         expect(stats.invalid).toBe(2);
 
@@ -127,6 +138,8 @@ describe("X3 InteractionDetector", () => {
         const store = createStore();
         const server = new FakeInteractionServer();
         const detector = new InteractionDetector(store, server);
+        store.createTask("seed ses-1", "seed", "omo_request", "ses-1");
+        store.createTask("seed ses-2", "seed", "omo_request", "ses-2");
 
         server.permissions = [{ requestID: "perm-1", sessionID: "ses-1" }];
         server.questions = [{ requestID: "q-1", sessionID: "ses-2" }];
@@ -134,6 +147,7 @@ describe("X3 InteractionDetector", () => {
         const stats = await detector.pollOnce();
         expect(stats.seen).toBe(2);
         expect(stats.enqueued).toBe(2);
+        expect(stats.observed).toBe(0);
 
         const events = store.listMetricEvents({
             eventType: "interaction_poll",
@@ -153,6 +167,7 @@ describe("X3 InteractionDetector", () => {
         expect(payload.source).toBe("x3_detector");
         expect(payload.seen).toBe(2);
         expect(payload.enqueued).toBe(2);
+        expect(payload.observed).toBe(0);
         expect(payload.type).toBe("poll_once");
 
         store.close();
@@ -162,6 +177,7 @@ describe("X3 InteractionDetector", () => {
         const store = createStore();
         const server = new FakeInteractionServer();
         const detector = new InteractionDetector(store, server);
+        store.createTask("seed ses-2", "seed", "omo_request", "ses-2");
 
         server.permissionError = new Error("listPermissions failed: 500");
         server.questions = [{ requestID: "q-1", sessionID: "ses-2" }];
@@ -169,6 +185,7 @@ describe("X3 InteractionDetector", () => {
         const stats = await detector.pollOnce();
         expect(stats.seen).toBe(1);
         expect(stats.enqueued).toBe(1);
+        expect(stats.observed).toBe(0);
         expect(stats.duplicate).toBe(0);
         expect(stats.invalid).toBe(0);
 
@@ -201,6 +218,7 @@ describe("X3 InteractionDetector", () => {
         const stats = await detector.pollOnce();
         expect(stats.seen).toBe(0);
         expect(stats.enqueued).toBe(0);
+        expect(stats.observed).toBe(0);
         expect(stats.duplicate).toBe(0);
         expect(stats.invalid).toBe(0);
 
@@ -210,6 +228,35 @@ describe("X3 InteractionDetector", () => {
         expect(events.length).toBe(1);
         expect(events[0]?.status).toBe("unhealthy");
         expect(events[0]?.reason).toBe("poll_partial");
+
+        store.close();
+    });
+
+    test("pollOnce records direct-user interactions as observe-only", async () => {
+        const store = createStore();
+        const server = new FakeInteractionServer();
+        const detector = new InteractionDetector(store, server);
+
+        server.permissions = [
+            { requestID: "perm-ext-1", sessionID: "ses-ext-1" },
+        ];
+
+        const stats = await detector.pollOnce();
+        expect(stats.seen).toBe(1);
+        expect(stats.enqueued).toBe(0);
+        expect(stats.observed).toBe(1);
+        expect(stats.duplicate).toBe(0);
+        expect(stats.invalid).toBe(0);
+
+        expect(store.listInteractions({ status: "pending" })).toHaveLength(0);
+        const observed = store.listInteractions({ status: "observed" });
+        expect(observed).toHaveLength(1);
+        expect(observed[0]?.origin).toBe("external");
+        expect(observed[0]?.requestId).toBe("perm-ext-1");
+
+        const queueStats = store.getInteractionStats();
+        expect(queueStats.pending).toBe(0);
+        expect(queueStats.observed).toBe(1);
 
         store.close();
     });

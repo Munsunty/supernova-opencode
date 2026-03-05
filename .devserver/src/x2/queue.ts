@@ -194,7 +194,7 @@ const EQ1_COMPLEX_CUES = [
     "high",
     "risk",
     "risky",
-    "sisyphus",
+    "oholiab",
     "deep",
     "hard",
     "difficult",
@@ -504,7 +504,7 @@ export class Queue {
                     "Classify task complexity for execution agent routing only.",
                 policy: {
                     simple: "route to spark",
-                    complex_or_risky: "route to sisyphus",
+                    complex_or_risky: "route to oholiab",
                 },
                 input: {
                     source: task.source,
