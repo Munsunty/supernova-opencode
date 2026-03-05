@@ -106,7 +106,11 @@ PhaseStamp: PS-20260305-01
 ## Present (Confirmed)
 PS-20260305-01
 
-- 없음
+- `PH-P1-X2-005` [계획] X2 routing joshua 단일 진입점 + spark X2 경로 제거
+- `PH-P1-SPARK-001` [계획] spark deprecated 처리 — X2 routing 제외, opencode.json 정리
+- `PH-P1-JOSHUA-003` [계획] joshua.prompt.txt 단순 질의 직접 응답 규칙 추가
+- `PH-P1-X4-001` [계획] X4 auto_relay 액션 + joshua_decision fallback + x4-summarizer Joshua 포맷
+- `PH-P1-X4-002` [계획] X3/X4 escalation chatId 전파 갭 수정 (sessionId → chatId 역추적)
 
 ## Next (Variable Phase-Backlog)
 
@@ -174,3 +178,6 @@ PS-20260305-01
 - 2026-03-05: `PS-20260304-10` phase close 완료 (`temp_TODO.md` archived: `archive/temp_TODO.2026-03-05.PS-20260304-10.20260305-172824.closed.md`)
 - 2026-03-05: `PS-20260305-01` phase 시작 (`PS-20260304-10` 종료 상태를 Previous로 고정, `temp_TODO.md` 신규 오픈 생성)
 - 2026-03-05: `PS-20260305-01` Present 갱신 없음 (다음 후보 선별 대기)
+- 2026-03-05: `PS-20260305-01` Next 3개 추가 (`PH-P1-X2-005`, `PH-P1-SPARK-001`, `PH-P1-JOSHUA-003`) — X2 joshua 단일 진입점 + spark 정리 + joshua 직접 응답 규칙
+- 2026-03-05: `PS-20260305-01` Next 2개 추가 (`PH-P1-X4-001`, `PH-P1-X4-002`) — X4 auto_relay 경로 + escalation Telegram chatId 전파 갭 수정
+- 2026-03-05: `PS-20260305-01` Present 확정 (X2-005, SPARK-001, JOSHUA-003, X4-001, X4-002) Next → 없음

@@ -6,6 +6,7 @@ import { InteractionEvaluator } from "../../src/x3/evaluator";
 import { InteractionProcessor } from "../../src/x3/processor";
 import { InteractionResponder } from "../../src/x3/responder";
 import { Store } from "../../src/x2/store";
+import { encodeTelegramTaskSource } from "../../src/utils/telegram-source";
 
 class FakeEq1Client {
     outputs: Array<Record<string, unknown>> = [];
@@ -137,6 +138,41 @@ describe("X3 processor (evaluator + responder)", () => {
         expect(answerPayload.source).toBe("w4");
         expect(answerPayload.route).toBe("user");
         expect(answerPayload.report_task_id).toBe(processed?.reportTask?.id);
+        store.close();
+    });
+
+    test("user route fallback propagates telegram chat id when x4Router is missing", async () => {
+        const store = createStore();
+        const eq1 = new FakeEq1Client();
+        const server = new FakeInteractionServer();
+        eq1.outputs.push({
+            score: 9,
+            reason: "needs human review",
+            route: "user",
+        });
+        store.createTask(
+            "seed task",
+            encodeTelegramTaskSource("x1_telegram", "555"),
+            "omo_request",
+            "ses-2-chat",
+        );
+        store.upsertInteraction({
+            type: "question",
+            requestId: "q-2-chat",
+            sessionId: "ses-2-chat",
+            payload: JSON.stringify({ requestID: "q-2-chat" }),
+        });
+
+        const evaluator = new InteractionEvaluator(eq1 as never);
+        const responder = new InteractionResponder(store, server as never);
+        const processor = new InteractionProcessor(store, evaluator, responder);
+
+        const processed = await processor.processNext();
+        expect(processed).toBeDefined();
+        expect(processed?.route).toBe("user");
+        expect(processed?.reportTask?.source).toBe("x3#chat:555");
+        expect(processed?.reportTask?.sessionId).toBe("ses-2-chat");
+
         store.close();
     });
 

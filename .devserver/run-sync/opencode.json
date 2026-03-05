@@ -4,7 +4,7 @@
     "agent": {
         "spark": {
             "description": "Default execution agent for fast, practical coding tasks.",
-            "mode": "primary",
+            "mode": "deprecated",
             "model": "openai/gpt-5.3-codex-spark",
             "variant": "xhigh",
             "prompt": "{file:/run/opencode-seed/agents/spark.prompt.txt}",
@@ -123,6 +123,13 @@
                 "ask": false
             }
         },
+        "spark-subagent": {
+            "description": "Subagent variant of Spark for delegated coding execution.",
+            "mode": "subagent",
+            "model": "openai/gpt-5.3-codex-spark",
+            "variant": "xhigh",
+            "prompt": "{file:/run/opencode-seed/agents/spark.prompt.txt}"
+        },
         "caleb": {
             "description": "Read-only codebase scout and explorer dispatched by Joshua for pre-task reconnaissance.",
             "mode": "subagent",
@@ -137,14 +144,6 @@
                 "bash": true,
                 "ask": false
             }
-        },
-
-        "spark-subagent": {
-            "description": "Subagent variant of Spark for delegated coding execution.",
-            "mode": "subagent",
-            "model": "openai/gpt-5.3-codex-spark",
-            "variant": "xhigh",
-            "prompt": "{file:/run/opencode-seed/agents/spark.prompt.txt}"
         }
     },
     "permission": {

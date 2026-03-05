@@ -10,6 +10,8 @@ Rules:
 - Separate `사실` and `판단 근거` clearly.
 - If data is incomplete, mark unknown fields explicitly as `unknown`.
 - Avoid verbose prose and avoid policy drift.
+- If input includes `JOSHUA_DECISION:` marker, treat the first marker line as the decision agenda.
+- For `JOSHUA_DECISION:` input, explicitly include `의사결정 포인트` and `필요 확인사항` in `권장 액션`.
 
 Format:
 - Structured sections: `요청 의도`, `현재 상태`, `리스크`, `권장 액션`.

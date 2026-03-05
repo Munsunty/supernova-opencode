@@ -1,4 +1,8 @@
 import { createLogger } from "../utils/logging";
+import {
+    encodeTelegramTaskSource,
+    extractTelegramChatIdFromTaskSource,
+} from "../utils/telegram-source";
 import type { Interaction, Store, Task } from "../x2/store";
 import type { InteractionEvaluation } from "./evaluator";
 import {
@@ -24,10 +28,12 @@ interface X4Router {
         evaluation: InteractionEvaluation,
     ): Promise<{
         decision: {
-            action: "report" | "new_task" | "skip";
+            action: "report" | "new_task" | "auto_relay" | "skip";
             reason: string;
             prompt: string | null;
             raw: Record<string, unknown>;
+            request_hash?: string;
+            parent_id?: string;
         };
         task: Task | null;
     }>;
@@ -63,6 +69,21 @@ function buildReportPrompt(
         null,
         2,
     );
+}
+
+function resolveTaskSourceForSession(
+    store: Store,
+    baseSource: string,
+    sessionId: string | null,
+): string {
+    const trimmed = sessionId?.trim();
+    if (!trimmed) return baseSource;
+
+    const source = store.getTaskSourceBySessionId(trimmed);
+    if (!source) return baseSource;
+
+    const chatId = extractTelegramChatIdFromTaskSource(source);
+    return encodeTelegramTaskSource(baseSource, chatId);
 }
 
 export class InteractionResponder {
@@ -109,8 +130,13 @@ export class InteractionResponder {
                       },
                       task: this.store.createTask(
                           buildReportPrompt(interaction, evaluation),
-                          "x3",
+                          resolveTaskSourceForSession(
+                              this.store,
+                              "x3",
+                              interaction.sessionId,
+                          ),
                           "report",
+                          interaction.sessionId,
                       ),
                   };
 

@@ -140,4 +140,36 @@ describe("X2 Store", () => {
 
         store.close();
     });
+
+    test("getTaskSourceBySessionId returns latest source and handles missing session", () => {
+        const store = createStore();
+        store.createTask("first", "x1_telegram#chat:101", "omo_request", "s-1");
+        store.createTask("second", "x4#chat:202", "report", "s-1");
+
+        const latest = store.getTaskSourceBySessionId("s-1");
+        expect(latest).toBe("x4#chat:202");
+        expect(store.getTaskSourceBySessionId("missing")).toBeNull();
+        expect(store.getTaskSourceBySessionId("   ")).toBeNull();
+
+        store.close();
+    });
+
+    test("upsertInteraction preserves joshua_decision type", () => {
+        const store = createStore();
+        const created = store.upsertInteraction({
+            type: "joshua_decision",
+            requestId: "jd-type-1",
+            sessionId: "ses-jd",
+            payload: JSON.stringify({ requestID: "jd-type-1" }),
+        });
+
+        expect(created.interaction.type).toBe("joshua_decision");
+        const fetched = store.getInteractionByRequest(
+            "joshua_decision",
+            "jd-type-1",
+        );
+        expect(fetched?.type).toBe("joshua_decision");
+
+        store.close();
+    });
 });

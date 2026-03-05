@@ -420,6 +420,25 @@ export class Store {
         return sessionId.length > 0 ? sessionId : null;
     }
 
+    getTaskSourceBySessionId(sessionId: string): string | null {
+        const trimmed = sessionId.trim();
+        if (!trimmed) return null;
+
+        const row = this.db
+            .prepare(
+                `SELECT source
+                 FROM tasks
+                 WHERE session_id = ?
+                 ORDER BY created_at DESC
+                 LIMIT 1`,
+            )
+            .get(trimmed) as { source?: unknown } | null;
+
+        if (!row || typeof row.source !== "string") return null;
+        const source = row.source.trim();
+        return source.length > 0 ? source : null;
+    }
+
     updateTask(
         id: string,
         updates: Partial<
@@ -1065,7 +1084,9 @@ export class Store {
     private rowToInteraction(row: Record<string, unknown>): Interaction {
         const rawType = row.type as string;
         const normalizedType: InteractionType =
-            rawType === "permission" || rawType === "question"
+            rawType === "permission" ||
+            rawType === "question" ||
+            rawType === "joshua_decision"
                 ? rawType
                 : "question";
         const rawOrigin = (row.origin as string | null) ?? "unknown";
