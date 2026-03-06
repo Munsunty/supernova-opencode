@@ -1,9 +1,9 @@
 # phase_TODO.md
 
-*Last Updated: 2026-03-05*
+*Last Updated: 2026-03-06*
 
 Status: OPEN
-PhaseStamp: PS-20260305-01
+PhaseStamp: PS-20260306-01
 
 ## 목적
 
@@ -82,6 +82,7 @@ PhaseStamp: PS-20260305-01
 
 ## Previous (Confirmed)
 
+- 2026-03-06: `PS-20260305-01` close (`PH-P1-X2-005`, `PH-P1-SPARK-001`, `PH-P1-JOSHUA-003`, `PH-P1-X4-001`, `PH-P1-X4-002` 완료, X2 joshua 단일 진입점 + spark deprecated + joshua 직접 응답 규칙 + X4 auto_relay/chatId 전파 반영, `temp_TODO.md` archived: `archive/temp_TODO.2026-03-06.PS-20260305-01.20260306-135141.closed.md`)
 - 2026-03-05: `PS-20260304-10` close (`PH-P1-BINDING-002`, `PH-P1-AGENT-001`, `PH-P1-JOSHUA-001`, `PH-P1-JOSHUA-002` 완료, aaron/caleb 바인딩 + X3 joshua_decision escalation pipeline 구축, `temp_TODO.md` archived: `archive/temp_TODO.2026-03-05.PS-20260304-10.20260305-172824.closed.md`)
 - 2026-03-05: `PH-P1-GENESIS-002` 완료 (genesis bootstrap 경로 기준 계약 확정)
 - 2026-03-05: `PH-P1-PHASE-001`, `PH-P1-PHASE-002` Joshua 운영으로 흡수 (Joshua 에이전트 시스템이 template 기반 phase/temp 관리를 직접 수행하므로 별도 phase 항목 불필요)
@@ -104,13 +105,9 @@ PhaseStamp: PS-20260305-01
 - 2026-03-04: `PS-20260304-04` close (`PH-P2-X1-001` 완료, `x1` Telegram 인입 파이프라인 적용 확인)
 
 ## Present (Confirmed)
-PS-20260305-01
+PS-20260306-01
 
-- `PH-P1-X2-005` [계획] X2 routing joshua 단일 진입점 + spark X2 경로 제거
-- `PH-P1-SPARK-001` [계획] spark deprecated 처리 — X2 routing 제외, opencode.json 정리
-- `PH-P1-JOSHUA-003` [계획] joshua.prompt.txt 단순 질의 직접 응답 규칙 추가
-- `PH-P1-X4-001` [계획] X4 auto_relay 액션 + joshua_decision fallback + x4-summarizer Joshua 포맷
-- `PH-P1-X4-002` [계획] X3/X4 escalation chatId 전파 갭 수정 (sessionId → chatId 역추적)
+- 없음
 
 ## Next (Variable Phase-Backlog)
 
@@ -181,3 +178,7 @@ PS-20260305-01
 - 2026-03-05: `PS-20260305-01` Next 3개 추가 (`PH-P1-X2-005`, `PH-P1-SPARK-001`, `PH-P1-JOSHUA-003`) — X2 joshua 단일 진입점 + spark 정리 + joshua 직접 응답 규칙
 - 2026-03-05: `PS-20260305-01` Next 2개 추가 (`PH-P1-X4-001`, `PH-P1-X4-002`) — X4 auto_relay 경로 + escalation Telegram chatId 전파 갭 수정
 - 2026-03-05: `PS-20260305-01` Present 확정 (X2-005, SPARK-001, JOSHUA-003, X4-001, X4-002) Next → 없음
+- 2026-03-06: `PS-20260305-01` Present 전체 완료 (X2-005, SPARK-001, JOSHUA-003, X4-001, X4-002 모두 [완료])
+- 2026-03-06: `PS-20260305-01` phase close 완료 (`temp_TODO.md` archived: `archive/temp_TODO.2026-03-06.PS-20260305-01.20260306-135141.closed.md`)
+- 2026-03-06: `PS-20260306-01` phase 시작 (`PS-20260305-01` 종료 상태를 Previous로 고정, `temp_TODO.md` 신규 오픈 생성)
+- 2026-03-06: `PS-20260306-01` Present 갱신 없음 (다음 후보 선별 대기)
