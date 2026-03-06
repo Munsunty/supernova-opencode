@@ -80,28 +80,42 @@ function parseNumber(value: string | undefined, fallback: number): number {
     return num;
 }
 
+function firstNonEmpty(
+    ...values: Array<string | null | undefined>
+): string | null {
+    for (const value of values) {
+        if (typeof value !== "string") continue;
+        const trimmed = value.trim();
+        if (trimmed.length > 0) return trimmed;
+    }
+    return null;
+}
+
 function parseArgs(argv: string[]): PollerArgs {
     const args: PollerArgs = {
         token: undefined,
         source:
-            process.env.OPENCODE_X1_POLLER_SOURCE ??
-            process.env.X1_POLLER_SOURCE ??
-            process.env.OPENCODE_X1_WEBHOOK_SOURCE ??
-            process.env.X1_WEBHOOK_SOURCE ??
-            "x1_telegram",
+            firstNonEmpty(
+                process.env.OPENCODE_X1_POLLER_SOURCE,
+                process.env.X1_POLLER_SOURCE,
+                process.env.OPENCODE_X1_WEBHOOK_SOURCE,
+                process.env.X1_WEBHOOK_SOURCE,
+            ) ?? "x1_telegram",
         taskSource:
-            process.env.OPENCODE_X1_POLLER_TASK_SOURCE ??
-            process.env.X1_POLLER_TASK_SOURCE ??
-            process.env.OPENCODE_X1_WEBHOOK_TASK_SOURCE ??
-            process.env.X1_WEBHOOK_TASK_SOURCE ??
-            "x1_telegram",
+            firstNonEmpty(
+                process.env.OPENCODE_X1_POLLER_TASK_SOURCE,
+                process.env.X1_POLLER_TASK_SOURCE,
+                process.env.OPENCODE_X1_WEBHOOK_TASK_SOURCE,
+                process.env.X1_WEBHOOK_TASK_SOURCE,
+            ) ?? "x1_telegram",
         dbPath:
             process.env.X2_DB_PATH ?? process.env.OPENCODE_X1_DB_PATH ?? null,
-        allowedUsers:
-            process.env.OPENCODE_X1_POLLER_ALLOWED_USER_IDS ??
-            process.env.X1_POLLER_ALLOWED_USER_IDS ??
-            process.env.OPENCODE_ALLOWED_USER_IDS ??
+        allowedUsers: firstNonEmpty(
+            process.env.OPENCODE_X1_POLLER_ALLOWED_USER_IDS,
+            process.env.X1_POLLER_ALLOWED_USER_IDS,
+            process.env.OPENCODE_ALLOWED_USER_IDS,
             process.env.ALLOWED_USER_IDS,
+        ),
         pollIntervalMs: parseNumber(
             process.env.OPENCODE_X1_POLLER_POLL_INTERVAL_MS ??
                 process.env.OPENCODE_X1_POLL_INTERVAL_MS ??
@@ -126,12 +140,13 @@ function parseArgs(argv: string[]): PollerArgs {
             DEFAULT_POLL_LIMIT,
         ),
         apiBase:
-            process.env.OPENCODE_X1_POLLER_API_BASE ??
-            process.env.OPENCODE_X1_API_BASE ??
-            process.env.X1_POLLER_API_BASE ??
-            process.env.X1_TELEGRAM_API_BASE ??
-            process.env.TELEGRAM_API_BASE ??
-            DEFAULT_API_BASE,
+            firstNonEmpty(
+                process.env.OPENCODE_X1_POLLER_API_BASE,
+                process.env.OPENCODE_X1_API_BASE,
+                process.env.X1_POLLER_API_BASE,
+                process.env.X1_TELEGRAM_API_BASE,
+                process.env.TELEGRAM_API_BASE,
+            ) ?? DEFAULT_API_BASE,
         help: false,
     };
 

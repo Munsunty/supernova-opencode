@@ -1,3 +1,6 @@
+import { appendFileSync, mkdirSync } from "node:fs";
+import { dirname } from "node:path";
+
 type LogLevel = "debug" | "info" | "warn" | "error";
 type LogValue = string | number | boolean | null | undefined;
 type LogFields = Record<string, LogValue>;
@@ -15,6 +18,23 @@ const SENSITIVE_VALUE_RE =
     /(bearer\s+[a-z0-9._-]+|sk-[a-z0-9_-]+|ghp_[a-z0-9]+)/i;
 const PROMPTLIKE_KEY_RE =
     /(prompt|content|response|result|raw|input|output|text)/i;
+
+function normalizeLogFilePath(raw?: string): string | null {
+    if (!raw) return null;
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    const lowered = trimmed.toLowerCase();
+    if (lowered === "off" || lowered === "none" || lowered === "null") {
+        return null;
+    }
+    return trimmed;
+}
+
+const LOG_FILE_PATH = normalizeLogFilePath(
+    process.env.OPENCODE_LOG_FILE ?? process.env.LOG_FILE_PATH,
+);
+let logFileReady = false;
+let logFileDisabled = false;
 
 function normalizeLevel(value?: string): LogLevel {
     if (!value) return "info";
@@ -71,6 +91,23 @@ function formatFields(fields?: LogFields): string {
         .join(" ");
 }
 
+function writeLogFile(line: string): void {
+    if (!LOG_FILE_PATH || logFileDisabled) return;
+    try {
+        if (!logFileReady) {
+            mkdirSync(dirname(LOG_FILE_PATH), { recursive: true });
+            logFileReady = true;
+        }
+        appendFileSync(LOG_FILE_PATH, `${line}\n`, "utf8");
+    } catch (error) {
+        logFileDisabled = true;
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(
+            `[${new Date().toISOString()}] [Logger] [WARN] log_file_write_failed path=${LOG_FILE_PATH} error=${JSON.stringify(message)}`,
+        );
+    }
+}
+
 export interface Logger {
     debug(message: string, fields?: LogFields): void;
     info(message: string, fields?: LogFields): void;
@@ -87,6 +124,7 @@ export function createLogger(scope: string, minLevel?: LogLevel): Logger {
         const timestamp = new Date().toISOString();
         const meta = formatFields(fields);
         const line = `[${timestamp}] [${scope}] [${level.toUpperCase()}] ${message}${meta ? ` ${meta}` : ""}`;
+        writeLogFile(line);
 
         if (level === "error") {
             console.error(line);

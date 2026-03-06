@@ -141,6 +141,17 @@ function parseBooleanEnv(raw: string | undefined, fallback: boolean): boolean {
     return fallback;
 }
 
+function firstNonEmpty(
+    ...values: Array<string | null | undefined>
+): string | null {
+    for (const value of values) {
+        if (typeof value !== "string") continue;
+        const trimmed = value.trim();
+        if (trimmed.length > 0) return trimmed;
+    }
+    return null;
+}
+
 function createReporter(): Reporter {
     const fallback = new ConsoleReporter();
     const telegramReportEnabled = parseBooleanEnv(
@@ -168,9 +179,10 @@ function createReporter(): Reporter {
     }
 
     const apiBase =
-        process.env.OPENCODE_X1_API_BASE ??
-        process.env.TELEGRAM_API_BASE ??
-        "https://api.telegram.org";
+        firstNonEmpty(
+            process.env.OPENCODE_X1_API_BASE,
+            process.env.TELEGRAM_API_BASE,
+        ) ?? "https://api.telegram.org";
     logger.info("x2_reporter_telegram_enabled", {
         apiBase,
     });
@@ -230,7 +242,9 @@ function parseArgs(argv: string[]): WorkerOptions {
         maxRetries: 1,
         retryBaseMs: 3000,
         retryMaxMs: 60000,
-        baseUrl: process.env.OPENCODE_BASE_URL ?? "http://127.0.0.1:4996",
+        baseUrl:
+            firstNonEmpty(process.env.OPENCODE_BASE_URL) ??
+            "http://127.0.0.1:4996",
     };
 
     for (let i = 0; i < argv.length; i++) {
