@@ -40,6 +40,11 @@ bun run control:plane
   - `CONTROL_PLANE_PROJECTS_FILE`가 없고 `.devserver/control-plane/projects.json`도 없으면
   - 현재 저장소를 단일 source로 자동 등록한다.
   - 이때 OpenCode base URL은 `X_OC_PODMAN_X1_DIRECT_BASE_URL`을 우선 사용하고, 없으면 `OPENCODE_BASE_URL`, 마지막 fallback은 `http://127.0.0.1:4996`이다.
+  - `CONTROL_PLANE_OPENCODE_BASE_URL`를 지정하면 위 기본 우선순위를 덮어쓸 수 있습니다.
+
+- Control-plane 바인딩 포트/호스트:
+  - `CONTROL_PLANE_PORT` (기본: `4310`)
+  - `CONTROL_PLANE_HOST` (기본: `127.0.0.1`)
 
 멀티 프로젝트 registry 예시는 [projects.example.json](/Users/nova/Documents/project/devserver/.devserver/control-plane/projects.example.json) 를 참고한다.
 

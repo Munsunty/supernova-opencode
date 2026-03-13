@@ -1,17 +1,19 @@
 {
-    "name": "opencode-supernova-devserver",
-    "private": true,
-    "scripts": {
-        "eq1:smoke": "bun run src/eq1/smoke.ts",
-        "update": "bun update opencode-ai @opencode-ai/sdk @opencode-ai/plugin"
-    },
-    "dependencies": {
-        "@opencode-ai/plugin": "1.2.16",
-        "@opencode-ai/sdk": "^1.2.24",
-        "opencode-ai": "^1.2.24",
-        "puppeteer-core": "^24.37.5"
-    },
-    "devDependencies": {
-        "@types/bun": "^1.3.10"
-    }
+  "name": "opencode-supernova-devserver",
+  "private": true,
+  "scripts": {
+    "eq1:smoke": "bun run src/eq1/smoke.ts",
+    "update": "bun update opencode-ai @opencode-ai/sdk @opencode-ai/plugin",
+    "control:check": "bun run src/control-plane/server.ts --check",
+    "control:plane": "bun run src/control-plane/server.ts"
+  },
+  "dependencies": {
+    "@opencode-ai/plugin": "1.2.16",
+    "@opencode-ai/sdk": "^1.2.24",
+    "opencode-ai": "^1.2.24",
+    "puppeteer-core": "^24.37.5"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.10"
+  }
 }
