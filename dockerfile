@@ -1,0 +1,29 @@
+FROM docker.io/oven/bun:1.3.10-debian
+
+ENV BUN_INSTALL_CACHE_DIR=/var/cache/bun \
+    XDG_CONFIG_HOME=/srv/opencode/config \
+    XDG_DATA_HOME=/srv/opencode/data \
+    XDG_CACHE_HOME=/srv/opencode/cache \
+    OPENCODE_CONFIG_DIR=/srv/opencode/config \
+    OPENCODE_CONFIG=/srv/opencode/config/opencode.json \
+    OPENCODE_PORT=4996
+
+WORKDIR /opt/opencode
+
+COPY package.json /opt/opencode/package.json
+COPY bun.lock /opt/opencode/bun.lock
+
+RUN bun install --frozen-lockfile \
+    && mkdir -p /srv/opencode/config /srv/opencode/data /srv/opencode/cache
+
+COPY src /opt/opencode/src
+COPY run-sync/opencode.json /opt/opencode/opencode.seed.json
+COPY run-sync/templates /opt/opencode/templates
+
+COPY entrypoint.sh /usr/local/bin/opencode-entrypoint
+RUN chmod +x /usr/local/bin/opencode-entrypoint
+
+EXPOSE 4996
+EXPOSE 51234
+
+ENTRYPOINT ["/usr/local/bin/opencode-entrypoint"]

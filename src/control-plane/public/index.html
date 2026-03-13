@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Devserver Control Plane</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <p class="eyebrow">Control Plane</p>
+        <h1>Devserver Atlas</h1>
+        <p class="lede">A read-first dashboard for multi-devserver coordination, inspired by the information layering of oh-my-opencode-dashboard.</p>
+      </div>
+
+      <section class="panel side-panel">
+        <div class="panel-head">
+          <h2>Sources</h2>
+          <button id="refreshButton" class="ghost">Refresh</button>
+        </div>
+        <p class="panel-copy">Choose the devserver you want to inspect before drilling into queue, sessions, or channel operations.</p>
+        <div id="projectList" class="project-list"></div>
+      </section>
+
+      <section class="panel side-panel">
+        <div class="panel-head">
+          <h2>Workspace</h2>
+        </div>
+        <div id="workspaceSummary" class="workspace-summary empty-state">Select a source to see health, roots, and dashboard links.</div>
+      </section>
+
+      <section class="panel side-panel emphasis-panel">
+        <div class="panel-head">
+          <h2>Design Intent</h2>
+        </div>
+        <p class="panel-copy">This dashboard keeps prompts and raw tool payloads out of view by default. It favors status, lineage, counts, decisions, and safe drill-down.</p>
+      </section>
+    </aside>
+
+    <main class="content">
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Source Overview</p>
+          <h2 id="heroTitle">Select a source</h2>
+          <p id="heroMeta" class="lede">Once a source is selected, use the view switcher below to move between queue, sessions, and channel workflows.</p>
+        </div>
+        <div class="hero-side">
+          <div id="healthBadge" class="health-badge">No source selected</div>
+          <p id="heroHint" class="hero-hint">Read-only by default. Web enqueue is isolated to the Channel view.</p>
+        </div>
+      </section>
+
+      <nav class="view-nav" aria-label="Dashboard sections">
+        <button class="view-tab active" data-view="overview">Overview</button>
+        <button class="view-tab" data-view="queue">Queue</button>
+        <button class="view-tab" data-view="sessions">Sessions</button>
+        <button class="view-tab" data-view="channel">Channel</button>
+      </nav>
+
+      <section class="info-banner">
+        <strong>UX note:</strong>
+        <span>Each view is purpose-scoped to reduce cognitive load. Start in Overview, then step into the specific area you want to act on.</span>
+      </section>
+
+      <section id="view-overview" class="view-page active">
+        <section id="statsGrid" class="stats-grid"></section>
+
+        <section class="grid-two">
+          <article class="panel">
+            <div class="panel-head">
+              <h2>X4 Decisions</h2>
+              <span class="muted">Recent escalations and routing outputs</span>
+            </div>
+            <div id="x4Decisions" class="table-host"></div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-head">
+              <h2>Agent Mix</h2>
+              <span class="muted">Run and summary agent distribution</span>
+            </div>
+            <div id="agentMix" class="chip-host"></div>
+          </article>
+        </section>
+
+        <section class="grid-two">
+          <article class="panel">
+            <div class="panel-head">
+              <h2>Recent Metrics</h2>
+              <span class="muted">Low-level runtime signals</span>
+            </div>
+            <div id="recentMetrics" class="table-host"></div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-head">
+              <h2>Web Threads</h2>
+              <span class="muted">Browser-origin task clusters</span>
+            </div>
+            <div id="webThreads" class="table-host"></div>
+          </article>
+        </section>
+      </section>
+
+      <section id="view-queue" class="view-page">
+        <section class="split-hero">
+          <div class="panel">
+            <div class="panel-head">
+              <h2>Recent Tasks</h2>
+              <span class="muted">X2 queue snapshot</span>
+            </div>
+            <div id="recentTasks" class="table-host"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head">
+              <h2>Recent Interactions</h2>
+              <span class="muted">X3 pending / answered / observed flow</span>
+            </div>
+            <div id="recentInteractions" class="table-host"></div>
+          </div>
+        </section>
+      </section>
+
+      <section id="view-sessions" class="view-page">
+        <section class="grid-two sessions-layout">
+          <article class="panel">
+            <div class="panel-head">
+              <h2>Sessions</h2>
+              <span class="muted">OpenCode session roll-up</span>
+            </div>
+            <div id="sessionsList" class="table-host"></div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-head">
+              <h2>Session Detail</h2>
+              <span id="sessionDetailLabel" class="muted">Select a session to inspect tokens, tools, and linked tasks.</span>
+            </div>
+            <div id="sessionDetail" class="detail-host empty-state">No session selected.</div>
+          </article>
+        </section>
+      </section>
+
+      <section id="view-channel" class="view-page">
+        <section class="grid-two">
+          <article class="panel">
+            <div class="panel-head">
+              <h2>Web Channel</h2>
+              <span class="muted">Telegram-free task intake into X2</span>
+            </div>
+            <p class="panel-copy">Use a stable thread name when you want related prompts to stay grouped in the dashboard.</p>
+            <form id="enqueueForm" class="enqueue-form">
+              <label>
+                <span>Thread</span>
+                <input id="threadIdInput" name="threadId" placeholder="main" maxlength="80" />
+              </label>
+              <label>
+                <span>Prompt</span>
+                <textarea id="promptInput" name="prompt" rows="8" placeholder="Queue a task into X2 without Telegram."></textarea>
+              </label>
+              <button class="primary" type="submit">Enqueue To X2</button>
+              <p id="enqueueResult" class="form-note"></p>
+            </form>
+          </article>
+
+          <article class="panel">
+            <div class="panel-head">
+              <h2>Channel Guidance</h2>
+            </div>
+            <div class="guidance-list">
+              <div class="guidance-item">
+                <p class="guidance-title">Use web threads intentionally</p>
+                <p class="muted">Create one thread per workstream instead of mixing unrelated prompts into a single queue source.</p>
+              </div>
+              <div class="guidance-item">
+                <p class="guidance-title">Start with Overview first</p>
+                <p class="muted">Check health, backlog, and X4 decisions before enqueueing more work.</p>
+              </div>
+              <div class="guidance-item">
+                <p class="guidance-title">Treat this as an operations surface</p>
+                <p class="muted">Keep raw prompts outside the dashboard and use it to understand state, not to dump transcripts.</p>
+              </div>
+            </div>
+          </article>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,41 @@
+services:
+  opencode:
+    image: homsa-opencode-testbed:latest
+    container_name: homsa-opencode-testbed
+    build:
+      context: .
+      dockerfile: dockerfile
+    environment:
+      OPENCODE_PORT: "${X_OC_PODMAN_CONTAINER_OPENCODE_PORT:-${X_OC_PODMAN_OPENCODE_PORT:-4996}}"
+      OPENCODE_HOSTNAME: "0.0.0.0"
+      OPENCODE_DASHBOARD_ENABLED: "0"
+      OPENCODE_DASHBOARD_PORT: "${X_OC_PODMAN_CONTAINER_DASHBOARD_PORT:-51234}"
+      OPENCODE_DASHBOARD_PROXY_ENABLED: "0"
+      OPENCODE_DASHBOARD_INTERNAL_PORT: "${X_OC_PODMAN_DASHBOARD_INTERNAL_PORT:-51235}"
+      OPENCODE_WORKSPACE: "/workspace/project"
+      OPENCODE_X2_ENABLED: "1"
+      OPENCODE_X1_ENABLED: "1"
+      OPENCODE_X1_MODE: "poller"
+      X_OC_PODMAN_X2_AGENT_ROUTING: "auto"
+      X_OC_PODMAN_X2_SIMPLE_AGENT: "joshua"
+      X_OC_PODMAN_X2_COMPLEX_AGENT: "joshua"
+      OPENCODE_X2_WORKER_SCRIPT: "/opt/opencode/src/x2/worker.ts"
+      OPENCODE_X1_POLLER_SCRIPT: "/opt/opencode/src/x1/poller.ts"
+      OPENCODE_X1_POLLER_SOURCE: "x1_telegram"
+      OPENCODE_X1_POLLER_TASK_SOURCE: "x1_telegram"
+      OPENCODE_X3_ENABLED: "1"
+      OPENCODE_X3_WORKER_SCRIPT: "/opt/opencode/src/x3/worker.ts"
+      X2_DB_PATH: "/srv/opencode/data/state.db"
+    ports:
+      - "${X_OC_PODMAN_HOST_PORT:-${X_OC_PODMAN_OPENCODE_PORT:-4996}}:${X_OC_PODMAN_CONTAINER_OPENCODE_PORT:-${X_OC_PODMAN_OPENCODE_PORT:-4996}}"
+    volumes:
+      - homsa_opencode_config:/srv/opencode/config:Z
+      - homsa_opencode_data:/srv/opencode/data:Z
+      - homsa_opencode_cache:/srv/opencode/cache:Z
+      - ..:/workspace/project:Z
+    restart: unless-stopped
+
+volumes:
+  homsa_opencode_config:
+  homsa_opencode_data:
+  homsa_opencode_cache:

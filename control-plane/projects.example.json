@@ -1,0 +1,13 @@
+{
+  "projects": [
+    {
+      "id": "devserver-local",
+      "name": "Devserver Local",
+      "rootDir": "/Users/nova/Documents/project/devserver",
+      "opencodeBaseUrl": "http://127.0.0.1:4996",
+      "stateDbPath": "/Users/nova/Documents/project/devserver/.devserver/data/state.db",
+      "dashboardUrl": "http://127.0.0.1:51234",
+      "tags": ["local", "primary"]
+    }
+  ]
+}
