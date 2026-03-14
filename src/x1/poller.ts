@@ -236,7 +236,7 @@ function parseUpdateId(update: TelegramUpdate): number | null {
 }
 
 function allowedByUserId(
-  context: ParsedTelegramMessage["event"]["context"],
+  context: ParsedTelegramMessage["context"],
   allowList: Set<string>,
 ): boolean {
   if (allowList.size === 0) return true;
