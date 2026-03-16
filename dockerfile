@@ -13,7 +13,10 @@ WORKDIR /opt/opencode
 COPY package.json /opt/opencode/package.json
 COPY bun.lock /opt/opencode/bun.lock
 
-RUN bun install --frozen-lockfile \
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ripgrep \
+    && rm -rf /var/lib/apt/lists/* \
+    && bun install --frozen-lockfile \
     && mkdir -p /srv/opencode/config /srv/opencode/data /srv/opencode/cache
 
 COPY src /opt/opencode/src
