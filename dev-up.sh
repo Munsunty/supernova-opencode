@@ -253,17 +253,6 @@ AUTH_IMPORT_MODE="${X_OC_PODMAN_AUTH_IMPORT_MODE:-always}"
 AUTH_IMPORT_SOURCE_HOST="${X_OC_PODMAN_AUTH_SOURCE_HOST:-$RUN_SYNC_DIR/auth.json}"
 OPENCODE_CONFIG_IMPORT_MODE="${X_OC_PODMAN_OPENCODE_CONFIG_IMPORT_MODE:-always}"
 OPENCODE_CONFIG_SOURCE_HOST="${X_OC_PODMAN_OPENCODE_CONFIG_SOURCE_HOST:-$RUN_SYNC_DIR/opencode.json}"
-SPARK_PROMPT_SOURCE_HOST="${X_OC_PODMAN_SPARK_PROMPT_SOURCE_HOST:-$DEVSERVER_DIR/agents/spark.prompt.txt}"
-GENESIS_PROMPT_SOURCE_HOST="${X_OC_PODMAN_GENESIS_PROMPT_SOURCE_HOST:-$DEVSERVER_DIR/agents/genesis.prompt.txt}"
-MOSES_PROMPT_SOURCE_HOST="${X_OC_PODMAN_MOSES_PROMPT_SOURCE_HOST:-$DEVSERVER_DIR/agents/moses.prompt.txt}"
-JOSHUA_PROMPT_SOURCE_HOST="${X_OC_PODMAN_JOSHUA_PROMPT_SOURCE_HOST:-$DEVSERVER_DIR/agents/joshua.prompt.txt}"
-BEZALEL_PROMPT_SOURCE_HOST="${X_OC_PODMAN_BEZALEL_PROMPT_SOURCE_HOST:-$DEVSERVER_DIR/agents/bezalel.prompt.txt}"
-OHOLIAB_PROMPT_SOURCE_HOST="${X_OC_PODMAN_OHOLIAB_PROMPT_SOURCE_HOST:-$DEVSERVER_DIR/agents/oholiab.prompt.txt}"
-AARON_PROMPT_SOURCE_HOST="${X_OC_PODMAN_AARON_PROMPT_SOURCE_HOST:-$DEVSERVER_DIR/agents/aaron.prompt.txt}"
-CALEB_PROMPT_SOURCE_HOST="${X_OC_PODMAN_CALEB_PROMPT_SOURCE_HOST:-$DEVSERVER_DIR/agents/caleb.prompt.txt}"
-EQ1_CORE_PROMPT_SOURCE_HOST="${X_OC_PODMAN_EQ1_CORE_PROMPT_SOURCE_HOST:-$DEVSERVER_DIR/agents/eq1-core.prompt.txt}"
-X2_SUMMARIZER_PROMPT_SOURCE_HOST="${X_OC_PODMAN_X2_SUMMARIZER_PROMPT_SOURCE_HOST:-$DEVSERVER_DIR/agents/x2-summarizer.prompt.txt}"
-X4_SUMMARIZER_PROMPT_SOURCE_HOST="${X_OC_PODMAN_X4_SUMMARIZER_PROMPT_SOURCE_HOST:-$DEVSERVER_DIR/agents/x4-summarizer.prompt.txt}"
 DOC_TEMPLATES_SOURCE_HOST="${X_OC_PODMAN_DOC_TEMPLATES_SOURCE_HOST:-$RUN_SYNC_DIR/templates}"
 DOC_TEMPLATES_IMPORT_MODE="${X_OC_PODMAN_DOC_TEMPLATES_IMPORT_MODE:-always}"
 DOC_TEMPLATES_SOURCE_CONTAINER="${X_OC_PODMAN_DOC_TEMPLATES_SOURCE_CONTAINER:-/run/opencode-seed/templates}"
@@ -406,83 +395,6 @@ if [ "$EXCLUDE_DEVSERVER" = "1" ]; then
     PODMAN_RUN_ARGS+=( -v "$OPENCODE_CONFIG_SOURCE_HOST:/run/opencode-seed/opencode.json:${_seed_mount_opts}" )
   fi
 fi
-if [ -f "$SPARK_PROMPT_SOURCE_HOST" ]; then
-  if [ "$EXCLUDE_DEVSERVER" = "1" ]; then
-    PODMAN_RUN_ARGS+=( -v "$SPARK_PROMPT_SOURCE_HOST:/run/opencode-seed/agents/spark.prompt.txt:${_seed_mount_opts}" )
-  else
-    PODMAN_RUN_ARGS+=( -v "$SPARK_PROMPT_SOURCE_HOST:/run/opencode-seed/agents/spark.prompt.txt:ro" )
-  fi
-fi
-if [ -f "$GENESIS_PROMPT_SOURCE_HOST" ]; then
-  if [ "$EXCLUDE_DEVSERVER" = "1" ]; then
-    PODMAN_RUN_ARGS+=( -v "$GENESIS_PROMPT_SOURCE_HOST:/run/opencode-seed/agents/genesis.prompt.txt:${_seed_mount_opts}" )
-  else
-    PODMAN_RUN_ARGS+=( -v "$GENESIS_PROMPT_SOURCE_HOST:/run/opencode-seed/agents/genesis.prompt.txt:ro" )
-  fi
-fi
-if [ -f "$MOSES_PROMPT_SOURCE_HOST" ]; then
-  if [ "$EXCLUDE_DEVSERVER" = "1" ]; then
-    PODMAN_RUN_ARGS+=( -v "$MOSES_PROMPT_SOURCE_HOST:/run/opencode-seed/agents/moses.prompt.txt:${_seed_mount_opts}" )
-  else
-    PODMAN_RUN_ARGS+=( -v "$MOSES_PROMPT_SOURCE_HOST:/run/opencode-seed/agents/moses.prompt.txt:ro" )
-  fi
-fi
-if [ -f "$JOSHUA_PROMPT_SOURCE_HOST" ]; then
-  if [ "$EXCLUDE_DEVSERVER" = "1" ]; then
-    PODMAN_RUN_ARGS+=( -v "$JOSHUA_PROMPT_SOURCE_HOST:/run/opencode-seed/agents/joshua.prompt.txt:${_seed_mount_opts}" )
-  else
-    PODMAN_RUN_ARGS+=( -v "$JOSHUA_PROMPT_SOURCE_HOST:/run/opencode-seed/agents/joshua.prompt.txt:ro" )
-  fi
-fi
-if [ -f "$BEZALEL_PROMPT_SOURCE_HOST" ]; then
-  if [ "$EXCLUDE_DEVSERVER" = "1" ]; then
-    PODMAN_RUN_ARGS+=( -v "$BEZALEL_PROMPT_SOURCE_HOST:/run/opencode-seed/agents/bezalel.prompt.txt:${_seed_mount_opts}" )
-  else
-    PODMAN_RUN_ARGS+=( -v "$BEZALEL_PROMPT_SOURCE_HOST:/run/opencode-seed/agents/bezalel.prompt.txt:ro" )
-  fi
-fi
-if [ -f "$OHOLIAB_PROMPT_SOURCE_HOST" ]; then
-  if [ "$EXCLUDE_DEVSERVER" = "1" ]; then
-    PODMAN_RUN_ARGS+=( -v "$OHOLIAB_PROMPT_SOURCE_HOST:/run/opencode-seed/agents/oholiab.prompt.txt:${_seed_mount_opts}" )
-  else
-    PODMAN_RUN_ARGS+=( -v "$OHOLIAB_PROMPT_SOURCE_HOST:/run/opencode-seed/agents/oholiab.prompt.txt:ro" )
-  fi
-fi
-if [ -f "$AARON_PROMPT_SOURCE_HOST" ]; then
-  if [ "$EXCLUDE_DEVSERVER" = "1" ]; then
-    PODMAN_RUN_ARGS+=( -v "$AARON_PROMPT_SOURCE_HOST:/run/opencode-seed/agents/aaron.prompt.txt:${_seed_mount_opts}" )
-  else
-    PODMAN_RUN_ARGS+=( -v "$AARON_PROMPT_SOURCE_HOST:/run/opencode-seed/agents/aaron.prompt.txt:ro" )
-  fi
-fi
-if [ -f "$CALEB_PROMPT_SOURCE_HOST" ]; then
-  if [ "$EXCLUDE_DEVSERVER" = "1" ]; then
-    PODMAN_RUN_ARGS+=( -v "$CALEB_PROMPT_SOURCE_HOST:/run/opencode-seed/agents/caleb.prompt.txt:${_seed_mount_opts}" )
-  else
-    PODMAN_RUN_ARGS+=( -v "$CALEB_PROMPT_SOURCE_HOST:/run/opencode-seed/agents/caleb.prompt.txt:ro" )
-  fi
-fi
-if [ -f "$EQ1_CORE_PROMPT_SOURCE_HOST" ]; then
-  if [ "$EXCLUDE_DEVSERVER" = "1" ]; then
-    PODMAN_RUN_ARGS+=( -v "$EQ1_CORE_PROMPT_SOURCE_HOST:/run/opencode-seed/agents/eq1-core.prompt.txt:${_seed_mount_opts}" )
-  else
-    PODMAN_RUN_ARGS+=( -v "$EQ1_CORE_PROMPT_SOURCE_HOST:/run/opencode-seed/agents/eq1-core.prompt.txt:ro" )
-  fi
-fi
-if [ -f "$X2_SUMMARIZER_PROMPT_SOURCE_HOST" ]; then
-  if [ "$EXCLUDE_DEVSERVER" = "1" ]; then
-    PODMAN_RUN_ARGS+=( -v "$X2_SUMMARIZER_PROMPT_SOURCE_HOST:/run/opencode-seed/agents/x2-summarizer.prompt.txt:${_seed_mount_opts}" )
-  else
-    PODMAN_RUN_ARGS+=( -v "$X2_SUMMARIZER_PROMPT_SOURCE_HOST:/run/opencode-seed/agents/x2-summarizer.prompt.txt:ro" )
-  fi
-fi
-if [ -f "$X4_SUMMARIZER_PROMPT_SOURCE_HOST" ]; then
-  if [ "$EXCLUDE_DEVSERVER" = "1" ]; then
-    PODMAN_RUN_ARGS+=( -v "$X4_SUMMARIZER_PROMPT_SOURCE_HOST:/run/opencode-seed/agents/x4-summarizer.prompt.txt:${_seed_mount_opts}" )
-  else
-    PODMAN_RUN_ARGS+=( -v "$X4_SUMMARIZER_PROMPT_SOURCE_HOST:/run/opencode-seed/agents/x4-summarizer.prompt.txt:ro" )
-  fi
-fi
 if [ -d "$DOC_TEMPLATES_SOURCE_HOST" ]; then
   if [ "$EXCLUDE_DEVSERVER" = "1" ]; then
     PODMAN_RUN_ARGS+=( -v "$DOC_TEMPLATES_SOURCE_HOST:$DOC_TEMPLATES_SOURCE_CONTAINER:${_seed_mount_opts}" )
@@ -547,39 +459,29 @@ fi
 if [ -n "$X1_DIRECT_SYSTEM" ]; then
   PODMAN_RUN_ARGS+=(-e "OPENCODE_X1_DIRECT_SYSTEM=$X1_DIRECT_SYSTEM")
 fi
-if [ ! -f "$SPARK_PROMPT_SOURCE_HOST" ]; then
-  warn_env "spark prompt seed not found: $SPARK_PROMPT_SOURCE_HOST"
+# =================================================================
+# Dynamic Agent Prompts Mount
+# agents 폴더 내의 모든 *.prompt.txt 파일을 찾아 자동으로 컨테이너에 마운트합니다.
+# =================================================================
+AGENTS_DIR="$DEVSERVER_DIR/agents"
+
+if [ -d "$AGENTS_DIR" ]; then
+  for prompt_file in "$AGENTS_DIR"/*.prompt.txt; do
+    # 파일이 실제로 존재하는지 확인 (빈 폴더일 경우 와일드카드 문자열 자체를 반환하는 것 방지)
+    [ -e "$prompt_file" ] || continue
+
+    filename=$(basename "$prompt_file")
+
+    if [ "$EXCLUDE_DEVSERVER" = "1" ]; then
+      PODMAN_RUN_ARGS+=( -v "$prompt_file:/run/opencode-seed/agents/$filename:${_seed_mount_opts}" )
+    else
+      PODMAN_RUN_ARGS+=( -v "$prompt_file:/run/opencode-seed/agents/$filename:ro" )
+    fi
+  done
+else
+  warn_env "Agents directory not found: $AGENTS_DIR"
 fi
-if [ ! -f "$GENESIS_PROMPT_SOURCE_HOST" ]; then
-  warn_env "genesis prompt seed not found: $GENESIS_PROMPT_SOURCE_HOST"
-fi
-if [ ! -f "$MOSES_PROMPT_SOURCE_HOST" ]; then
-  warn_env "moses prompt seed not found: $MOSES_PROMPT_SOURCE_HOST"
-fi
-if [ ! -f "$JOSHUA_PROMPT_SOURCE_HOST" ]; then
-  warn_env "joshua prompt seed not found: $JOSHUA_PROMPT_SOURCE_HOST"
-fi
-if [ ! -f "$BEZALEL_PROMPT_SOURCE_HOST" ]; then
-  warn_env "bezalel prompt seed not found: $BEZALEL_PROMPT_SOURCE_HOST"
-fi
-if [ ! -f "$OHOLIAB_PROMPT_SOURCE_HOST" ]; then
-  warn_env "oholiab prompt seed not found: $OHOLIAB_PROMPT_SOURCE_HOST"
-fi
-if [ ! -f "$AARON_PROMPT_SOURCE_HOST" ]; then
-  warn_env "aaron prompt seed not found: $AARON_PROMPT_SOURCE_HOST"
-fi
-if [ ! -f "$CALEB_PROMPT_SOURCE_HOST" ]; then
-  warn_env "caleb prompt seed not found: $CALEB_PROMPT_SOURCE_HOST"
-fi
-if [ ! -f "$EQ1_CORE_PROMPT_SOURCE_HOST" ]; then
-  warn_env "eq1-core prompt seed not found: $EQ1_CORE_PROMPT_SOURCE_HOST"
-fi
-if [ ! -f "$X2_SUMMARIZER_PROMPT_SOURCE_HOST" ]; then
-  warn_env "x2 summarizer prompt seed not found: $X2_SUMMARIZER_PROMPT_SOURCE_HOST"
-fi
-if [ ! -f "$X4_SUMMARIZER_PROMPT_SOURCE_HOST" ]; then
-  warn_env "x4 summarizer prompt seed not found: $X4_SUMMARIZER_PROMPT_SOURCE_HOST"
-fi
+# =================================================================
 if [ "$USE_TTY" = "1" ]; then
   PODMAN_RUN_ARGS+=( -it )
 fi
@@ -605,7 +507,7 @@ echo "SANDBOX:       podman (enabled)"
 echo "CONTAINER:     $CONTAINER_NAME"
 echo "VOLUMES:       config=$VOLUME_CONFIG data=$VOLUME_DATA cache=$VOLUME_CACHE"
 echo "RUN-SYNC DIR:  $RUN_SYNC_DIR"
-echo "SEED SOURCES:  opencode=$OPENCODE_CONFIG_SOURCE_HOST auth=$AUTH_IMPORT_SOURCE_HOST spark=$SPARK_PROMPT_SOURCE_HOST genesis=$GENESIS_PROMPT_SOURCE_HOST moses=$MOSES_PROMPT_SOURCE_HOST joshua=$JOSHUA_PROMPT_SOURCE_HOST bezalel=$BEZALEL_PROMPT_SOURCE_HOST oholiab=$OHOLIAB_PROMPT_SOURCE_HOST aaron=$AARON_PROMPT_SOURCE_HOST caleb=$CALEB_PROMPT_SOURCE_HOST eq1=$EQ1_CORE_PROMPT_SOURCE_HOST x2=$X2_SUMMARIZER_PROMPT_SOURCE_HOST x4=$X4_SUMMARIZER_PROMPT_SOURCE_HOST templates=$DOC_TEMPLATES_SOURCE_HOST"
+echo "SEED SOURCES:  opencode=$OPENCODE_CONFIG_SOURCE_HOST auth=$AUTH_IMPORT_SOURCE_HOST agents_dir=$DEVSERVER_DIR/agents templates=$DOC_TEMPLATES_SOURCE_HOST"
 echo "SUMMARIZER AGENTS: x2=$X2_SUMMARIZER_AGENT x4=$X4_SUMMARIZER_AGENT"
 if [ "$EXCLUDE_DEVSERVER" = "1" ]; then
   echo "WORKSPACE:     /workspace/project (.devserver excluded)"
